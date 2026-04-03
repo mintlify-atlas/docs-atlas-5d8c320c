@@ -1,0 +1,191 @@
+---
+title: "Custom tools"
+description: "Add new tools to OpenHarness by subclassing BaseTool."
+---
+
+Every tool in OpenHarness — from `bash` to `read_file` — is a Python class that subclasses `BaseTool`. Adding your own tool follows the same pattern: define an input model, implement `execute()`, and register the tool with the harness.
+
+## Core abstractions
+
+Three classes from `openharness.tools.base` make up the tool contract:
+
+```python
+@dataclass
+class ToolExecutionContext:
+    """Shared execution context passed to every tool invocation."""
+    cwd: Path                          # Current working directory
+    metadata: dict[str, Any]           # Arbitrary runtime metadata
+
+@dataclass(frozen=True)
+class ToolResult:
+    """Normalized result returned from every tool."""
+    output: str                        # Text content returned to the model
+    is_error: bool = False             # True marks the result as an error
+    metadata: dict[str, Any]           # Optional structured metadata
+
+class BaseTool(ABC):
+    name: str                          # Tool name used in API calls
+    description: str                   # Shown to the model in the tool schema
+    input_model: type[BaseModel]       # Pydantic model defining accepted inputs
+
+    @abstractmethod
+    async def execute(
+        self,
+        arguments: BaseModel,
+        context: ToolExecutionContext,
+    ) -> ToolResult: ...
+
+    def is_read_only(self, arguments: BaseModel) -> bool:
+        """Return True to skip write-permission checks."""
+        return False
+```
+
+The `to_api_schema()` method on `BaseTool` generates the JSON schema that the Anthropic Messages API expects automatically from your `input_model` — you do not need to write it by hand.
+
+## Creating a custom tool
+
+<Steps>
+  <Step title="Define the input model">
+    Create a Pydantic `BaseModel` for your tool's arguments. Use `Field(description=...)` on every field — the description becomes part of the JSON schema the model sees, so it directly affects how well the model uses your tool.
+
+    ```python
+    from pydantic import BaseModel, Field
+
+    class UrlFetchInput(BaseModel):
+        url: str = Field(description="HTTP or HTTPS URL to fetch")
+        timeout_seconds: int = Field(
+            default=10, ge=1, le=60,
+            description="Request timeout in seconds"
+        )
+    ```
+  </Step>
+
+  <Step title="Subclass BaseTool">
+    Set the three required class attributes and implement `execute()`. The method must be `async` and must return a `ToolResult`.
+
+    ```python
+    import httpx
+    from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+
+    class UrlFetchTool(BaseTool):
+        name = "url_fetch"
+        description = "Fetch the text content of a URL."
+        input_model = UrlFetchInput
+
+        async def execute(
+            self,
+            arguments: UrlFetchInput,
+            context: ToolExecutionContext,
+        ) -> ToolResult:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        arguments.url,
+                        timeout=arguments.timeout_seconds,
+                        follow_redirects=True,
+                    )
+                    response.raise_for_status()
+                    return ToolResult(output=response.text[:8000])
+            except Exception as exc:
+                return ToolResult(output=str(exc), is_error=True)
+    ```
+  </Step>
+
+  <Step title="Override is_read_only (optional)">
+    Tools that never modify the filesystem or system state should return `True` from `is_read_only()`. This lets the harness skip write-permission prompts for those calls.
+
+    ```python
+    def is_read_only(self, arguments: UrlFetchInput) -> bool:
+        return True
+    ```
+  </Step>
+
+  <Step title="Register the tool">
+    Pass an instance of your tool to the `ToolRegistry` before starting the agent loop.
+
+    ```python
+    from openharness.tools.base import ToolRegistry
+
+    registry = ToolRegistry()
+    registry.register(UrlFetchTool())
+    ```
+  </Step>
+</Steps>
+
+## Complete example
+
+The following tool performs a simple arithmetic calculation and demonstrates error handling, a read-only declaration, and structured metadata in the result.
+
+```python
+from pydantic import BaseModel, Field
+from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+
+
+class CalcInput(BaseModel):
+    expression: str = Field(
+        description="A Python arithmetic expression to evaluate, e.g. '2 ** 10 + 5'"
+    )
+
+
+class CalcTool(BaseTool):
+    """Safely evaluate a numeric arithmetic expression."""
+
+    name = "calculate"
+    description = (
+        "Evaluate a Python arithmetic expression and return the numeric result. "
+        "Supports +, -, *, /, **, and standard math functions."
+    )
+    input_model = CalcInput
+
+    _ALLOWED_NAMES = {"abs", "round", "min", "max", "pow", "sum"}
+
+    def is_read_only(self, arguments: CalcInput) -> bool:
+        return True
+
+    async def execute(
+        self,
+        arguments: CalcInput,
+        context: ToolExecutionContext,
+    ) -> ToolResult:
+        try:
+            # Restrict builtins to a safe subset
+            result = eval(  # noqa: S307
+                arguments.expression,
+                {"__builtins__": {k: __builtins__[k] for k in self._ALLOWED_NAMES}},  # type: ignore[index]
+            )
+            return ToolResult(
+                output=str(result),
+                metadata={"expression": arguments.expression, "result": result},
+            )
+        except Exception as exc:
+            return ToolResult(
+                output=f"Evaluation error: {exc}",
+                is_error=True,
+            )
+```
+
+## Built-in tools as reference
+
+The built-in tools follow exactly the same pattern and are good reading before writing your own:
+
+| Tool | File | What to study |
+|------|------|---------------|
+| `bash` | `src/openharness/tools/bash_tool.py` | Subprocess handling, timeout, error detection |
+| `read_file` | `src/openharness/tools/file_read_tool.py` | `is_read_only`, path resolution, binary detection |
+
+## What you get for free
+
+Every `BaseTool` subclass automatically inherits:
+
+- **Pydantic validation** — arguments are validated before `execute()` is called; malformed inputs never reach your code.
+- **Self-describing schema** — `to_api_schema()` generates the full JSON schema from your `input_model`, including field descriptions, types, and constraints.
+- **Permission integration** — the harness checks write permissions before calling `execute()` unless `is_read_only()` returns `True`.
+- **Hook support** — `PreToolUse` and `PostToolUse` hooks fire around every tool call, including yours, without any extra code.
+
+<Note>
+  The `name` attribute must be unique across all registered tools. The model uses this name to invoke the tool, so choose something descriptive and collision-free.
+</Note>
+
+<Tip>
+  Write detailed `Field(description=...)` strings. The model reads these directly when deciding which tool to call and what arguments to pass. Vague descriptions lead to incorrect usage.
+</Tip>

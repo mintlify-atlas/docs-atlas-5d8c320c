@@ -1,0 +1,154 @@
+---
+title: "Provider Compatibility"
+description: "Configure OpenHarness to work with different Anthropic-compatible LLM backends."
+---
+
+OpenHarness communicates through an Anthropic-compatible API client. At startup, the
+`detect_provider` function in `src/openharness/api/provider.py` inspects
+`ANTHROPIC_BASE_URL` and `ANTHROPIC_MODEL` to determine which provider profile is active and what
+capabilities are available.
+
+<Warning>
+  Voice mode is not wired in the current build for any provider. The `voice_mode` setting exists in
+  `settings.json`, but live voice auth and streaming are not yet configured. This applies to
+  Anthropic, Moonshot/Kimi, Vertex, Bedrock, and all generic compatible endpoints.
+</Warning>
+
+## Provider profiles
+
+The table below lists every profile detected by `provider.py`. Detection runs in order: Moonshot →
+Bedrock → Vertex → generic → Anthropic default.
+
+| Provider profile | Detection signal | Auth kind | Notes |
+|-----------------|-----------------|-----------|-------|
+| **Anthropic** | No `ANTHROPIC_BASE_URL` set | API key | Default profile; targets the standard Claude API |
+| **Moonshot / Kimi** | `ANTHROPIC_BASE_URL` contains `moonshot`, or model name starts with `kimi` | API key | Routes through the Moonshot Anthropic-compatible endpoint |
+| **Vertex-compatible** | `ANTHROPIC_BASE_URL` contains `vertex` or `aiplatform` | GCP | Suitable for Anthropic-style gateways deployed on Vertex AI |
+| **Bedrock-compatible** | `ANTHROPIC_BASE_URL` contains `bedrock` | AWS | For Bedrock-style deployments |
+| **Generic Anthropic-compatible** | Any other explicit `ANTHROPIC_BASE_URL` | API key | Useful for proxies, internal gateways, and self-hosted endpoints |
+
+## Configuration by provider
+
+<Tabs>
+  <Tab title="Anthropic">
+    The default profile. Set your API key and leave `ANTHROPIC_BASE_URL` unset.
+
+    ```bash
+    export ANTHROPIC_API_KEY=sk-ant-your-key-here
+    ```
+
+    The default model is `claude-sonnet-4-20250514`. Override it with:
+
+    ```bash
+    export ANTHROPIC_MODEL=claude-opus-4-5
+    ```
+  </Tab>
+
+  <Tab title="Moonshot / Kimi">
+    Point the base URL at the Moonshot Anthropic-compatible endpoint and select a Kimi model:
+
+    ```bash
+    export ANTHROPIC_BASE_URL=https://api.moonshot.cn/anthropic
+    export ANTHROPIC_API_KEY=your_kimi_api_key
+    export ANTHROPIC_MODEL=kimi-k2.5
+    ```
+
+    Detection fires when the URL contains `moonshot` **or** the model name starts with `kimi` —
+    either condition is sufficient.
+  </Tab>
+
+  <Tab title="Vertex-compatible">
+    Set a base URL that includes `vertex` or `aiplatform`. Authentication is handled by your GCP
+    credentials, but the API key field is still read for token passing if your gateway requires it.
+
+    ```bash
+    export ANTHROPIC_BASE_URL=https://us-east5-aiplatform.googleapis.com/v1/...
+    export ANTHROPIC_API_KEY=your_gcp_token_or_placeholder
+    ```
+
+    <Note>
+      The exact URL format depends on your Vertex AI deployment. OpenHarness only checks that
+      the string `vertex` or `aiplatform` appears in the URL; it does not perform GCP OAuth
+      flows itself.
+    </Note>
+  </Tab>
+
+  <Tab title="Bedrock-compatible">
+    Set a base URL that includes `bedrock`. Authentication is handled by your AWS credentials.
+
+    ```bash
+    export ANTHROPIC_BASE_URL=https://bedrock-runtime.us-east-1.amazonaws.com/...
+    export ANTHROPIC_API_KEY=your_aws_token_or_placeholder
+    ```
+
+    <Note>
+      OpenHarness only checks for `bedrock` in the URL string. AWS credential resolution
+      (IAM roles, `AWS_ACCESS_KEY_ID`, etc.) is handled outside the harness.
+    </Note>
+  </Tab>
+
+  <Tab title="Generic compatible">
+    Any other explicit `ANTHROPIC_BASE_URL` value triggers the generic profile. Use this for
+    self-hosted proxies, internal gateways, or any other Anthropic-compatible endpoint.
+
+    ```bash
+    export ANTHROPIC_BASE_URL=https://my-internal-gateway.example.com/anthropic
+    export ANTHROPIC_API_KEY=your_gateway_key
+    ```
+  </Tab>
+</Tabs>
+
+## Settings file
+
+You can persist provider configuration in `~/.openharness/settings.json` instead of exporting
+environment variables each session. Environment variables take precedence over file values.
+
+```json ~/.openharness/settings.json
+{
+  "api_key": "your_api_key_here",
+  "model": "kimi-k2.5",
+  "base_url": "https://api.moonshot.cn/anthropic"
+}
+```
+
+The full settings precedence order is:
+
+1. CLI arguments (highest priority)
+2. Environment variables (`ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL`, `OPENHARNESS_MODEL`, `OPENHARNESS_BASE_URL`, `OPENHARNESS_MAX_TOKENS`)
+3. `~/.openharness/settings.json`
+4. Defaults
+
+## Auth status commands
+
+Check and configure authentication with the `oh auth` subcommand:
+
+```bash
+# Show whether an API key is configured for the current provider
+oh auth status
+
+# Interactively set or update your API key
+oh auth login
+```
+
+`oh auth status` returns `configured` when an API key is present and `missing` when it is not.
+It does not validate the key against the provider — it only checks for presence.
+
+## Choosing a provider
+
+<CardGroup cols={2}>
+  <Card title="Start with Anthropic" icon="key">
+    The simplest path. Set `ANTHROPIC_API_KEY` and run `oh`. No additional configuration needed.
+  </Card>
+  <Card title="Try Kimi for comparison" icon="flask-conical">
+    The Kimi example in the README is a good second test. It exercises the provider detection logic
+    and confirms your setup works across backends.
+  </Card>
+  <Card title="Vertex / Bedrock" icon="cloud">
+    Use these profiles if your organisation routes model calls through a managed cloud gateway.
+    Ensure your URL contains the detection keyword (`vertex`, `aiplatform`, or `bedrock`).
+  </Card>
+  <Card title="Generic proxy" icon="server">
+    Any other Anthropic-compatible base URL will be picked up automatically. Useful for local
+    proxies, rate-limit shims, or internal routing layers.
+  </Card>
+</CardGroup>

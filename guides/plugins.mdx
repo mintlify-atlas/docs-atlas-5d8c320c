@@ -1,0 +1,177 @@
+---
+title: "Plugins"
+description: "Install and manage plugins to extend OpenHarness with new commands, hooks, and agents."
+---
+
+Plugins extend OpenHarness with reusable workflow bundles. A single plugin can contribute any combination of commands, lifecycle hooks, agent definitions, and MCP server configurations.
+
+## What plugins contribute
+
+| Contribution | Description |
+|---|---|
+| **Commands** | Markdown files in `commands/` that add new slash commands |
+| **Hooks** | JSON-defined `PreToolUse` / `PostToolUse` lifecycle events |
+| **Agents** | Markdown files in `agents/` that define specialized agent roles |
+| **MCP servers** | Server configs in `.mcp.json` that become available to `MCPTool` |
+
+## Managing plugins
+
+```bash
+# List installed plugins and their enabled state
+oh plugin list
+
+# Install a plugin from a directory, archive, or URL
+oh plugin install <source>
+
+# Enable a previously disabled plugin
+oh plugin enable <name>
+
+# Uninstall a plugin
+oh plugin uninstall <name>
+```
+
+## Official plugins
+
+OpenHarness has been tested with these six official plugins from the `claude-code/plugins` collection:
+
+| Plugin | Type | What it does |
+|--------|------|-------------|
+| `commit-commands` | Commands | Git commit, push, and PR workflows |
+| `security-guidance` | Hooks | Security warnings on file edits |
+| `hookify` | Commands + Agents | Create and manage custom behavior hooks |
+| `feature-dev` | Commands | End-to-end feature development workflow |
+| `code-review` | Agents | Multi-agent pull request review |
+| `pr-review-toolkit` | Agents | Specialized agents for PR review stages |
+
+## Plugin directory structure
+
+A plugin is a directory containing a `plugin.json` manifest. OpenHarness recognizes two manifest locations for compatibility with the `claude-code` plugin format:
+
+```
+my-plugin/
+├── plugin.json                 # or .claude-plugin/plugin.json
+├── commands/
+│   └── my-command.md
+├── agents/
+│   └── my-agent.md
+├── hooks/
+│   └── hooks.json
+└── .mcp.json
+```
+
+### Plugin manifest (`plugin.json`)
+
+```json
+{
+  "name": "my-plugin",
+  "version": "1.0.0",
+  "description": "My custom plugin",
+  "enabled_by_default": true
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | required | Unique plugin identifier |
+| `version` | string | `"0.0.0"` | Semantic version string |
+| `description` | string | `""` | Human-readable summary |
+| `enabled_by_default` | boolean | `true` | Whether the plugin is active on install |
+
+## Plugin scope
+
+Plugins can be installed globally (available to all projects) or locally (available only to a specific project).
+
+<Tabs>
+  <Tab title="Global">
+    Global plugins live in `~/.openharness/plugins/` and are available in every session.
+
+    ```bash
+    # Install globally
+    cp -r my-plugin ~/.openharness/plugins/my-plugin
+
+    # Or use the CLI installer
+    oh plugin install ./my-plugin
+    ```
+  </Tab>
+  <Tab title="Project">
+    Project plugins live in `.openharness/plugins/` inside your working directory and are scoped to that project.
+
+    ```bash
+    # Install into the current project
+    mkdir -p .openharness/plugins
+    cp -r my-plugin .openharness/plugins/my-plugin
+    ```
+
+    Commit the `.openharness/plugins/` directory to version control to share the plugin with your team.
+  </Tab>
+</Tabs>
+
+## Creating a plugin
+
+<Steps>
+  <Step title="Create the plugin directory">
+    ```bash
+    mkdir -p ~/.openharness/plugins/my-plugin/.claude-plugin
+    ```
+  </Step>
+  <Step title="Write the manifest">
+    Create `~/.openharness/plugins/my-plugin/.claude-plugin/plugin.json`:
+
+    ```json
+    {
+      "name": "my-plugin",
+      "version": "1.0.0",
+      "description": "My custom plugin"
+    }
+    ```
+  </Step>
+  <Step title="Add commands (optional)">
+    Create `~/.openharness/plugins/my-plugin/commands/deploy.md`:
+
+    ```markdown
+    ---
+    name: deploy
+    description: Deploy the current branch to staging
+    ---
+
+    # deploy
+
+    ## Workflow
+    1. Run tests
+    2. Build the artifact
+    3. Push to staging
+    ```
+  </Step>
+  <Step title="Add hooks (optional)">
+    Create `~/.openharness/plugins/my-plugin/hooks/hooks.json`:
+
+    ```json
+    {
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Write",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "echo 'Writing file: $TOOL_INPUT_PATH'"
+              }
+            ]
+          }
+        ]
+      }
+    }
+    ```
+  </Step>
+  <Step title="Enable and verify">
+    ```bash
+    oh plugin list
+    ```
+
+    The plugin should appear as enabled. Start a session and use the slash command to confirm it loaded.
+  </Step>
+</Steps>
+
+<Note>
+Plugin skills, commands, and agents are registered under the plugin's name. If a user skill and a plugin skill share the same name, the user skill takes precedence.
+</Note>

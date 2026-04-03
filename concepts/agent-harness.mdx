@@ -1,0 +1,89 @@
+---
+title: "Agent Harness"
+description: "What an agent harness is and why it matters."
+---
+
+An **agent harness** is the complete infrastructure that surrounds an LLM and turns it into a functional agent. The model supplies intelligence; the harness supplies everything else.
+
+> The model is the agent. The code is the harness.
+
+## The core idea
+
+A large language model, on its own, can reason and generate text — but it cannot open a file, run a command, remember what happened last session, or ask you for permission before deleting something. Those capabilities belong to the harness layer.
+
+The relationship is clean and deliberate:
+
+| Layer | Responsibility |
+|-------|---------------|
+| **LLM** | Decide what to do next |
+| **Harness** | Do it safely, efficiently, and with full observability |
+
+This separation is not just architectural tidiness. It means you can swap the model (Anthropic → Kimi → any compatible endpoint) without rewriting your tools, skills, or permission rules. It also means you can audit every action the agent takes without touching the model itself.
+
+## The harness equation
+
+```
+Harness = Tools + Knowledge + Observation + Action + Permissions
+```
+
+Each term maps to a concrete subsystem in OpenHarness:
+
+<CardGroup cols={2}>
+  <Card title="Tools" icon="wrench">
+    43+ built-in tools covering file I/O, shell execution, web search, Jupyter notebooks, MCP integration, and multi-agent coordination. Every tool is self-describing via JSON Schema, so the model understands what it can do without any hand-holding.
+  </Card>
+  <Card title="Skills" icon="book-open">
+    On-demand knowledge loaded as Markdown files. Skills let the model gain domain expertise (git workflows, security review, PDF processing) exactly when needed, without bloating the system prompt. Compatible with anthropics/skills.
+  </Card>
+  <Card title="Permissions" icon="shield">
+    Multi-level safety boundaries: path rules, command deny-lists, interactive approval dialogs, and Plan Mode (read-only). Permissions are enforced at every tool invocation before anything touches the filesystem or network.
+  </Card>
+  <Card title="Memory" icon="database">
+    Persistent cross-session knowledge via `MEMORY.md`, context injection from `CLAUDE.md`, auto-compaction to prevent runaway context growth, and session resume so work is never lost between conversations.
+  </Card>
+  <Card title="Coordination" icon="users">
+    Subagent spawning, team registries, and background task lifecycle management for multi-agent workflows. A single harness instance can delegate subtasks to specialized child agents and collect their results.
+  </Card>
+</CardGroup>
+
+## Why this separation matters
+
+**Composability.** Each pillar is independently replaceable. You can swap in a custom permission backend, add new tools, or load a different skill set without touching the core loop.
+
+**Safety.** The harness is the single enforcement point for every action the model wants to take. Permissions, hooks, and approval dialogs all live here — not scattered across individual tools.
+
+**Observability.** Because all tool calls flow through a single pipeline (permission check → pre-hook → execute → post-hook), you get a complete audit trail of every agent action with no extra instrumentation.
+
+**Portability.** Skills and plugins follow the same format as `anthropics/skills` and `claude-code/plugins`, so community-built knowledge and workflow extensions drop in without modification.
+
+## How OpenHarness implements this pattern
+
+OpenHarness is a Python implementation of the agent harness pattern. Its 14 subsystems map directly onto the five pillars above:
+
+- The `engine` subsystem runs the core agent loop.
+- The `tools` and `mcp` subsystems handle action.
+- The `skills` and `prompts` subsystems handle knowledge and context.
+- The `permissions` and `hooks` subsystems handle safety and observation.
+- The `memory`, `tasks`, and `coordinator` subsystems handle persistence and coordination.
+- The `plugins`, `commands`, `config`, and `ui` subsystems handle extensibility and user interaction.
+
+See the [Architecture](/concepts/architecture) page for a full subsystem breakdown.
+
+## Comparison with alternatives
+
+OpenHarness covers 98% of Claude Code's tool surface and 61% of its commands at a fraction of the size:
+
+| | Claude Code | OpenHarness |
+|--|------------|-------------|
+| **Lines of code** | 512,664 | 11,733 (44x lighter) |
+| **Files** | 1,884 | 163 |
+| **Language** | TypeScript | Python |
+| **Tools** | ~44 | 43 |
+| **Skills compatible** | Yes | Yes (anthropics/skills) |
+| **Plugin compatible** | Yes | Yes (claude-code/plugins) |
+
+The reduction in size comes from stripping enterprise overhead (telemetry, OAuth complexity, hundreds of React components) and focusing purely on the harness architecture. The result is a codebase you can actually read, understand, and extend.
+
+<Tip>
+OpenHarness is designed to be inspectable. If you want to understand how production AI agents work under the hood, the source is small enough to read in an afternoon.
+</Tip>

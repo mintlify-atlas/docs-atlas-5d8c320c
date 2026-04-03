@@ -1,0 +1,298 @@
+---
+title: "CLI Reference"
+description: "Complete reference for the `oh` command-line interface."
+---
+
+## Synopsis
+
+```bash
+oh [OPTIONS] [COMMAND]
+```
+
+Running `oh` with no arguments launches the interactive REPL. Pass `-p`/`--print` with a prompt to run non-interactively and exit.
+
+<CodeGroup>
+
+```bash Interactive session
+oh
+```
+
+```bash Single prompt, then exit
+oh -p "Explain this codebase"
+```
+
+```bash Resume the latest session
+oh --continue
+```
+
+</CodeGroup>
+
+---
+
+## Options
+
+### Session
+
+<ParamField path="--continue" type="boolean" default="false">
+  Continue the most recent conversation in the current directory. Short alias: `-c`.
+</ParamField>
+
+<ParamField path="--resume" type="string">
+  Resume a conversation by session ID. Pass a session ID to load that session directly, or omit the value to open an interactive picker. Short alias: `-r`.
+</ParamField>
+
+<ParamField path="--name" type="string">
+  Set a display name for this session. Short alias: `-n`.
+</ParamField>
+
+### Model & Effort
+
+<ParamField path="--model" type="string">
+  Model alias (e.g. `sonnet`, `opus`) or full model ID. Overrides the `model` field in your settings file. Short alias: `-m`.
+</ParamField>
+
+<ParamField path="--effort" type="string">
+  Reasoning effort level for the session. Accepted values: `low`, `medium`, `high`, `max`.
+</ParamField>
+
+<ParamField path="--verbose" type="boolean" default="false">
+  Override the verbose mode setting from config, enabling more detailed output.
+</ParamField>
+
+<ParamField path="--max-turns" type="integer">
+  Maximum number of agentic turns before the agent stops. Useful when combined with `--print` to cap automated runs.
+</ParamField>
+
+### Output
+
+<ParamField path="--print" type="string">
+  Run a single prompt non-interactively: print the response to stdout and exit. Pass your prompt as the flag value. Short alias: `-p`.
+
+  ```bash
+  oh -p "List all Python files in this repo"
+  ```
+</ParamField>
+
+<ParamField path="--output-format" type="string" default="text">
+  Output format used with `--print`. Accepted values:
+
+  | Value | Description |
+  |---|---|
+  | `text` | Plain text response (default) |
+  | `json` | Full response as a JSON object |
+  | `stream-json` | Newline-delimited JSON events streamed in real time |
+</ParamField>
+
+### Permissions
+
+<ParamField path="--permission-mode" type="string">
+  Set the permission mode for this session. Accepted values:
+
+  | Value | Behavior |
+  |---|---|
+  | `default` | Prompt before write and shell operations |
+  | `plan` | Block all write operations; read-only planning |
+  | `full_auto` | Allow all operations without prompting |
+</ParamField>
+
+<ParamField path="--dangerously-skip-permissions" type="boolean" default="false">
+  Bypass all permission checks. Equivalent to `--permission-mode full_auto`. Only use this inside a fully sandboxed environment.
+
+  <Warning>
+    This flag disables all safety guardrails. Never use it on a machine where the agent could modify files you care about.
+  </Warning>
+</ParamField>
+
+<ParamField path="--allowed-tools" type="string[]">
+  Comma- or space-separated list of tool names to allow. All other tools are denied. Can be specified multiple times.
+</ParamField>
+
+<ParamField path="--disallowed-tools" type="string[]">
+  Comma- or space-separated list of tool names to deny. Can be specified multiple times.
+</ParamField>
+
+### System & Context
+
+<ParamField path="--system-prompt" type="string">
+  Override the default system prompt entirely. Short alias: `-s`.
+</ParamField>
+
+<ParamField path="--append-system-prompt" type="string">
+  Append additional text to the end of the default system prompt instead of replacing it.
+</ParamField>
+
+<ParamField path="--settings" type="string">
+  Path to a JSON settings file, or an inline JSON string. Settings are merged on top of `~/.openharness/settings.json`.
+</ParamField>
+
+<ParamField path="--base-url" type="string">
+  Anthropic-compatible API base URL. Overrides `ANTHROPIC_BASE_URL` and the value in settings.
+
+  ```bash
+  oh --base-url https://api.moonshot.cn/anthropic
+  ```
+</ParamField>
+
+<ParamField path="--api-key" type="string">
+  API key for the session. Overrides both the config file and the `ANTHROPIC_API_KEY` environment variable. Short alias: `-k`.
+</ParamField>
+
+<ParamField path="--bare" type="boolean" default="false">
+  Minimal mode: skip hooks, plugins, MCP server discovery, and CLAUDE.md auto-discovery. Useful for fast scripting or isolated runs.
+</ParamField>
+
+### Advanced
+
+<ParamField path="--debug" type="boolean" default="false">
+  Enable debug logging. Prints detailed internal state to stderr. Short alias: `-d`.
+</ParamField>
+
+<ParamField path="--mcp-config" type="string[]">
+  Load additional MCP servers from JSON files or inline JSON strings. Can be specified multiple times. Values are merged with MCP servers already configured in settings.
+</ParamField>
+
+---
+
+## Subcommands
+
+### `oh mcp` — Manage MCP servers
+
+<AccordionGroup>
+  <Accordion title="oh mcp list">
+    Print all configured MCP servers and their transport type.
+
+    ```bash
+    oh mcp list
+    ```
+  </Accordion>
+  <Accordion title="oh mcp add <name> <config-json>">
+    Add an MCP server to the global settings file. `config-json` is a JSON string describing the server configuration.
+
+    ```bash
+    oh mcp add my-server '{"command": "npx", "args": ["-y", "@my/mcp-server"]}'
+    ```
+  </Accordion>
+  <Accordion title="oh mcp remove <name>">
+    Remove an MCP server from the global settings file.
+
+    ```bash
+    oh mcp remove my-server
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### `oh plugin` — Manage plugins
+
+<AccordionGroup>
+  <Accordion title="oh plugin list">
+    Print all discovered plugins and their enabled/disabled status.
+
+    ```bash
+    oh plugin list
+    ```
+  </Accordion>
+  <Accordion title="oh plugin install <source>">
+    Install a plugin from a local directory path or URL.
+
+    ```bash
+    oh plugin install ./my-plugin
+    oh plugin install https://github.com/example/my-oh-plugin
+    ```
+  </Accordion>
+  <Accordion title="oh plugin uninstall <name>">
+    Uninstall a plugin by name.
+
+    ```bash
+    oh plugin uninstall my-plugin
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### `oh auth` — Manage authentication
+
+<AccordionGroup>
+  <Accordion title="oh auth status">
+    Show the current authentication status and detected provider.
+
+    ```bash
+    oh auth status
+    ```
+  </Accordion>
+  <Accordion title="oh auth login [--api-key KEY]">
+    Store an API key in the settings file. If `--api-key` is not provided, you will be prompted to enter it interactively (input is hidden).
+
+    ```bash
+    oh auth login --api-key sk-ant-...
+    oh auth login            # prompts for key
+    ```
+  </Accordion>
+  <Accordion title="oh auth logout">
+    Remove the stored API key from the settings file.
+
+    ```bash
+    oh auth logout
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Common patterns
+
+<CodeGroup>
+
+```bash Non-interactive print mode
+# Plain text output
+oh -p "Summarize the README"
+
+# JSON output for scripting
+oh -p "List functions in main.py" --output-format json
+
+# Stream JSON events in real time
+oh -p "Refactor auth.py" --output-format stream-json
+```
+
+```bash Resume a session
+# Continue the most recent session in this directory
+oh -c
+
+# Open the session picker
+oh -r
+
+# Load a specific session by ID
+oh -r abc123
+```
+
+```bash Custom model and effort
+oh --model claude-opus-4-5 --effort high
+
+# Use a Kimi / Moonshot endpoint
+oh --base-url https://api.moonshot.cn/anthropic \
+   --api-key sk-... \
+   --model kimi-k2.5
+```
+
+```bash Restrict what the agent can do
+# Read-only planning session
+oh --permission-mode plan
+
+# Allow only specific tools
+oh --allowed-tools Read,Glob,Grep
+
+# Block shell execution
+oh --disallowed-tools Bash
+```
+
+```bash Automation and CI
+# Cap turns, skip permissions, JSON output
+oh -p "Run tests and report failures" \
+   --dangerously-skip-permissions \
+   --max-turns 10 \
+   --output-format json
+```
+
+</CodeGroup>
+
+<Note>
+  Environment variables `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, and `ANTHROPIC_MODEL` are read automatically and can be used instead of the corresponding flags.
+</Note>

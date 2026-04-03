@@ -1,0 +1,175 @@
+---
+title: "MCP Tools"
+description: "Tools for calling tools and reading resources from Model Context Protocol servers."
+---
+
+OpenHarness includes a built-in MCP client that can connect to any MCP-compatible server. Once a server is connected, its tools and resources are available to the agent through three dedicated tool types.
+
+## How MCP tools are registered
+
+When the agent starts with an MCP manager configured, tools are registered automatically:
+
+```python
+if mcp_manager is not None:
+    registry.register(ListMcpResourcesTool(mcp_manager))
+    registry.register(ReadMcpResourceTool(mcp_manager))
+    for tool_info in mcp_manager.list_tools():
+        registry.register(McpToolAdapter(mcp_manager, tool_info))
+```
+
+Each server's tools become first-class OpenHarness tools. The model sees them in its JSON Schema tool list and can call them the same way it calls built-in tools.
+
+## Configuring MCP servers
+
+<Tabs>
+  <Tab title="CLI">
+    ```bash
+    oh mcp add <server-name> <command> [args...]
+    oh mcp list
+    oh mcp remove <server-name>
+    ```
+  </Tab>
+  <Tab title="settings.json">
+    ```json
+    {
+      "mcp_servers": {
+        "filesystem": {
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"]
+        },
+        "github": {
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-github"],
+          "env": {
+            "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_..."
+          }
+        }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## MCPTool (adapter)
+
+**Tool name:** `mcp__{server}__{tool}`
+
+Each tool exposed by a connected MCP server is registered as a separate OpenHarness tool under the naming scheme `mcp__{server_name}__{tool_name}`. Special characters in server and tool names are replaced with `_`.
+
+For example, a tool named `read_file` on a server named `filesystem` becomes:
+
+```
+mcp__filesystem__read_file
+```
+
+The input schema for each adapted tool is generated dynamically from the MCP server's own JSON Schema declaration. Required fields in the MCP schema become required Pydantic fields; optional fields default to `None`.
+
+<Note>
+  The exact parameters available depend entirely on the MCP server you have configured. Use `list_mcp_resources` to discover what is available, and consult the server's own documentation for parameter details.
+</Note>
+
+### Example
+
+For an MCP server that exposes a `search` tool with a `query` parameter:
+
+```json
+{
+  "query": "OpenHarness task management"
+}
+```
+
+Called as tool name `mcp__my_search_server__search`.
+
+### How the adapter works
+
+`McpToolAdapter` wraps the raw MCP call:
+
+```python
+output = await mcp_manager.call_tool(
+    server_name,   # e.g. "filesystem"
+    tool_name,     # e.g. "read_file"
+    arguments,     # dict from the Pydantic model
+)
+```
+
+The response from the MCP server is returned as-is in the `ToolResult.output` field.
+
+---
+
+## ListMcpResources
+
+**Tool name:** `list_mcp_resources`
+
+List all resources advertised by connected MCP servers. Resources are data objects (files, database rows, API responses, etc.) that can be read via `read_mcp_resource`.
+
+This tool takes no input parameters.
+
+### Example
+
+```json
+{}
+```
+
+### Output format
+
+Each line contains the server name, resource URI, and description:
+
+```
+filesystem:/workspace/README.md Project readme
+filesystem:/workspace/src/main.py Main entry point
+github:repos/HKUDS/OpenHarness  OpenHarness repository metadata
+```
+
+If no MCP servers are connected or no resources are available, the tool returns `(no MCP resources)`.
+
+---
+
+## ReadMcpResource
+
+**Tool name:** `read_mcp_resource`
+
+Read the contents of a single MCP resource identified by its server name and URI. The URI format is server-specific; use `list_mcp_resources` to discover valid URIs.
+
+### Parameters
+
+<ParamField path="server" type="string" required>
+  Name of the MCP server that owns the resource. Must match a configured server name exactly.
+</ParamField>
+
+<ParamField path="uri" type="string" required>
+  Resource URI as advertised by the server. Obtain valid URIs from `list_mcp_resources`.
+</ParamField>
+
+### Example
+
+```json
+{
+  "server": "filesystem",
+  "uri": "/workspace/src/main.py"
+}
+```
+
+---
+
+## Typical MCP workflow
+
+<Steps>
+  <Step title="Configure a server">
+    Add an MCP server via `oh mcp add` or `settings.json`. The server starts when the agent session begins.
+  </Step>
+  <Step title="Discover resources">
+    Call `list_mcp_resources` (no parameters) to see what data the server exposes.
+  </Step>
+  <Step title="Read a resource">
+    Call `read_mcp_resource` with the server name and URI to retrieve the resource contents.
+  </Step>
+  <Step title="Call server tools">
+    Call `mcp__{server}__{tool}` with the parameters required by that specific server tool.
+  </Step>
+</Steps>
+
+<Tip>
+  MCP tools participate in the same permission and hook system as built-in tools. You can add `PreToolUse` hooks that match on `mcp__*` tool names to audit or restrict MCP calls.
+</Tip>

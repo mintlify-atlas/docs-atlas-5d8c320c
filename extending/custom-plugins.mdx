@@ -1,0 +1,258 @@
+---
+title: "Custom plugins"
+description: "Build plugins with commands, hooks, and agents to extend OpenHarness."
+---
+
+Plugins bundle related extensions — slash commands, lifecycle hooks, agent definitions, and skills — into a single installable directory. OpenHarness uses the same plugin format as `claude-code`, so existing plugins work without modification.
+
+## Plugin directory structure
+
+```
+.openharness/plugins/my-plugin/
+├── .claude-plugin/
+│   └── plugin.json        # Manifest (required)
+├── commands/
+│   └── my-command.md      # Slash command definition
+├── hooks/
+│   └── hooks.json         # PreToolUse / PostToolUse hooks
+├── agents/
+│   └── my-agent.md        # Subagent behavior definition
+└── skills/
+    └── my-skill.md        # Plugin-scoped skill
+```
+
+Only `plugin.json` is required. Include only the directories you need.
+
+## Plugin manifest
+
+The manifest lives at `.claude-plugin/plugin.json` inside the plugin directory.
+
+```json
+{
+  "name": "my-plugin",
+  "version": "1.0.0",
+  "description": "A short description of what this plugin does",
+  "enabled_by_default": true,
+  "skills_dir": "skills",
+  "hooks_file": "hooks/hooks.json"
+}
+```
+
+All manifest fields:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | — | Plugin identifier (required) |
+| `version` | string | `"0.0.0"` | Semantic version |
+| `description` | string | `""` | Human-readable description |
+| `enabled_by_default` | boolean | `true` | Load automatically after install |
+| `skills_dir` | string | `"skills"` | Directory containing skill `.md` files |
+| `hooks_file` | string | `"hooks.json"` | Path to the hooks definition file |
+| `mcp_file` | string | `"mcp.json"` | Path to MCP server definitions |
+| `author` | object | `null` | Author metadata (name, url, email) |
+| `commands` | string \| list \| dict | `null` | Command directory or definitions |
+| `agents` | string \| list | `null` | Agent definition paths |
+| `hooks` | string \| dict \| list | `null` | Inline or referenced hook definitions |
+
+## Slash commands
+
+Create a `.md` file in the `commands/` directory. The filename (without extension) becomes the command name.
+
+`commands/review.md`:
+
+```markdown
+---
+description: Run a structured code review on the current changes
+---
+
+Review the staged changes in this repository:
+
+1. Run `git diff --cached` to see what is staged.
+2. For each changed file, check for:
+   - Logic errors and off-by-one mistakes
+   - Missing error handling
+   - Security issues (hardcoded secrets, SQL injection, path traversal)
+   - Unclear variable names or missing comments on complex logic
+3. Summarize findings grouped by severity: critical, warning, suggestion.
+4. If no issues are found, say so explicitly.
+```
+
+The command is then available in a session as `/review`.
+
+## Hooks
+
+Hooks run shell commands or model prompts before or after every tool call. Define them in `hooks/hooks.json`.
+
+```json
+{
+  "PreToolUse": [
+    {
+      "type": "command",
+      "command": "echo \"[hook] about to run tool\"",
+      "timeout_seconds": 5,
+      "matcher": "bash",
+      "block_on_failure": false
+    }
+  ],
+  "PostToolUse": [
+    {
+      "type": "prompt",
+      "prompt": "Did the previous tool call look safe and expected? Reply YES or NO.",
+      "timeout_seconds": 30,
+      "block_on_failure": true
+    }
+  ]
+}
+```
+
+### Hook types
+
+<Tabs>
+  <Tab title="command">
+    Runs a shell command. Useful for logging, notifications, or lightweight validation.
+
+    ```json
+    {
+      "type": "command",
+      "command": "logger -t openharness \"tool called\"",
+      "timeout_seconds": 10,
+      "matcher": "bash",
+      "block_on_failure": false
+    }
+    ```
+  </Tab>
+  <Tab title="prompt">
+    Asks the model to evaluate a condition. Returns a YES/NO answer.
+
+    ```json
+    {
+      "type": "prompt",
+      "prompt": "Does the tool call appear to modify files outside the project directory?",
+      "timeout_seconds": 30,
+      "block_on_failure": true
+    }
+    ```
+  </Tab>
+  <Tab title="http">
+    POSTs the tool event payload to an HTTP endpoint. Useful for audit logging or external approval systems.
+
+    ```json
+    {
+      "type": "http",
+      "url": "https://hooks.example.com/tool-events",
+      "headers": { "Authorization": "Bearer token123" },
+      "timeout_seconds": 10,
+      "block_on_failure": false
+    }
+    ```
+  </Tab>
+  <Tab title="agent">
+    Runs a deeper model-based validation with full reasoning. Higher latency than `prompt`, but more thorough.
+
+    ```json
+    {
+      "type": "agent",
+      "prompt": "Analyze whether the bash command is safe to execute in a production environment.",
+      "timeout_seconds": 60,
+      "block_on_failure": true
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Hook fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `type` | string | — | `command`, `prompt`, `http`, or `agent` |
+| `matcher` | string \| null | `null` | Tool name pattern to match; `null` matches all tools |
+| `block_on_failure` | boolean | varies | Block the tool call if the hook fails |
+| `timeout_seconds` | integer | 30 | Maximum seconds to wait for the hook |
+
+## Agent definitions
+
+Agent definitions describe a subagent's behavior and are placed in the `agents/` directory.
+
+`agents/security-reviewer.md`:
+
+```markdown
+---
+name: security-reviewer
+description: Reviews code changes for security vulnerabilities
+---
+
+You are a security-focused code reviewer. When invoked:
+
+1. Read the files you have been given or that are staged for commit.
+2. Check specifically for:
+   - Secrets or credentials in source code
+   - Input validation gaps
+   - Insecure dependencies or imports
+   - Path traversal or injection risks
+3. Return a structured report: one section per finding, each with severity,
+   file location, and a concrete remediation suggestion.
+4. If no issues are found, confirm explicitly that the review is clean.
+```
+
+## Building a complete plugin
+
+<Steps>
+  <Step title="Create the plugin directory">
+    ```bash
+    mkdir -p .openharness/plugins/my-plugin/.claude-plugin
+    mkdir -p .openharness/plugins/my-plugin/commands
+    mkdir -p .openharness/plugins/my-plugin/hooks
+    mkdir -p .openharness/plugins/my-plugin/agents
+    ```
+  </Step>
+
+  <Step title="Write plugin.json">
+    ```json
+    {
+      "name": "my-plugin",
+      "version": "1.0.0",
+      "description": "Security and review utilities",
+      "enabled_by_default": true
+    }
+    ```
+
+    Save to `.openharness/plugins/my-plugin/.claude-plugin/plugin.json`.
+  </Step>
+
+  <Step title="Add commands, hooks, and agents">
+    Create `.md` files in `commands/` for slash commands, `hooks/hooks.json` for lifecycle hooks, and `.md` files in `agents/` for subagent definitions. Include only what your plugin needs.
+  </Step>
+
+  <Step title="Install the plugin">
+    ```bash
+    oh plugin install ./.openharness/plugins/my-plugin
+    ```
+
+    To install from a remote source:
+
+    ```bash
+    oh plugin install https://github.com/example/my-plugin
+    ```
+  </Step>
+
+  <Step title="Verify the plugin is active">
+    ```bash
+    oh plugin list
+    ```
+
+    Enable or disable it at any time:
+
+    ```bash
+    oh plugin enable my-plugin
+    oh plugin disable my-plugin
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  OpenHarness is compatible with the `claude-code` plugin format. Plugins from the official [`claude-code/plugins`](https://github.com/anthropics/claude-code/tree/main/plugins) repository install and run without modification.
+</Note>
+
+<Warning>
+  Hooks with `block_on_failure: true` and `type: "agent"` add a model call to every matched tool execution. Use them selectively to avoid significant latency increases.
+</Warning>

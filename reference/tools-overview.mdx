@@ -1,0 +1,94 @@
+---
+title: "Tools Overview"
+description: "All 43+ tools available to the OpenHarness agent, with categories, discovery, and shared guarantees."
+---
+
+OpenHarness ships **43+ built-in tools** that the agent can call during a session. Every tool is a Python class that extends `BaseTool`, carries a self-describing JSON Schema, and integrates with the permission and hook systems.
+
+## Shared guarantees
+
+Every tool in OpenHarness provides four guarantees regardless of category:
+
+<CardGroup cols={2}>
+  <Card title="Pydantic input validation" icon="shield-check">
+    All inputs are parsed through a Pydantic `BaseModel` before execution. Invalid arguments return a structured error — the agent never receives unvalidated data.
+  </Card>
+  <Card title="JSON Schema self-description" icon="code">
+    Each tool exposes its full `input_schema` via `to_api_schema()`. The Anthropic-compatible API client sends this schema on every request so the model always knows what parameters are available.
+  </Card>
+  <Card title="Permission integration" icon="lock">
+    The harness calls a permission check before every tool execution. Read-only tools declare `is_read_only()` so the permission layer can apply lighter rules. Write/execute tools go through the configured permission mode.
+  </Card>
+  <Card title="Hook support" icon="bolt">
+    `PreToolUse` and `PostToolUse` lifecycle events fire around every tool call. Plugins and custom hooks can inspect, modify, or veto tool inputs and outputs.
+  </Card>
+</CardGroup>
+
+## How tools are discovered
+
+When the agent loop starts, `create_default_tool_registry()` instantiates every built-in tool and passes the full list to the API client as JSON Schema:
+
+```python
+registry = ToolRegistry()
+for tool in (BashTool(), FileReadTool(), ...):
+    registry.register(tool)
+
+# The registry serialises every tool into the Anthropic tools array
+schemas = registry.to_api_schema()
+# → [{"name": "bash", "description": "...", "input_schema": {...}}, ...]
+```
+
+MCP tools are added dynamically: when an MCP manager is provided, `McpToolAdapter` wraps each discovered MCP tool and registers it under the name `mcp__{server}__{tool}`.
+
+## Tool categories
+
+| Category | Tools | Description |
+|----------|-------|-------------|
+| **File I/O** | `bash`, `read_file`, `write_file`, `edit_file`, `glob`, `grep` | Core file operations with permission checks |
+| **Search** | `web_fetch`, `web_search`, `tool_search`, `lsp` | Web and code search capabilities |
+| **Notebook** | `notebook_edit` | Jupyter notebook cell editing |
+| **Agent** | `agent`, `send_message`, `team_create`, `team_delete` | Subagent spawning and coordination |
+| **Task** | `task_create`, `task_get`, `task_list`, `task_update`, `task_stop`, `task_output` | Background task management |
+| **MCP** | `mcp__{server}__{tool}`, `list_mcp_resources`, `read_mcp_resource` | Model Context Protocol integration |
+| **Mode** | `enter_plan_mode`, `exit_plan_mode`, `enter_worktree`, `exit_worktree` | Workflow mode switching |
+| **Schedule** | `cron_create`, `cron_list`, `cron_delete`, `remote_trigger` | Scheduled and remote execution |
+| **Meta** | `skill`, `config`, `brief`, `sleep`, `ask_user_question`, `todo_write` | Knowledge loading, configuration, and interaction |
+
+## Detail pages
+
+<CardGroup cols={2}>
+  <Card title="File, Shell & Search Tools" icon="folder" href="/reference/tools-file">
+    `bash`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `web_fetch`, `web_search`, `notebook_edit`
+  </Card>
+  <Card title="Agent & Coordination Tools" icon="users" href="/reference/tools-agent">
+    `agent`, `send_message`, `team_create`, `team_delete`
+  </Card>
+  <Card title="Task Management Tools" icon="list-checks" href="/reference/tools-task">
+    `task_create`, `task_get`, `task_list`, `task_update`, `task_stop`, `task_output`
+  </Card>
+  <Card title="MCP Tools" icon="plug" href="/reference/tools-mcp">
+    `mcp__{server}__{tool}`, `list_mcp_resources`, `read_mcp_resource`
+  </Card>
+</CardGroup>
+
+## Extending with custom tools
+
+You can register your own tool by subclassing `BaseTool`:
+
+```python
+from pydantic import BaseModel, Field
+from openharness.tools.base import BaseTool, ToolExecutionContext, ToolResult
+
+class MyToolInput(BaseModel):
+    query: str = Field(description="Search query")
+
+class MyTool(BaseTool):
+    name = "my_tool"
+    description = "Does something useful"
+    input_model = MyToolInput
+
+    async def execute(self, arguments: MyToolInput, context: ToolExecutionContext) -> ToolResult:
+        return ToolResult(output=f"Result for: {arguments.query}")
+```
+
+Pass an instance to `registry.register(MyTool())` before starting the agent loop, or add it to `create_default_tool_registry()` in your own factory.

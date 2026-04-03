@@ -1,0 +1,217 @@
+---
+title: "Agent & Coordination Tools"
+description: "Tools for spawning subagents, sending messages between agents, and managing teams in multi-agent workflows."
+---
+
+OpenHarness supports multi-agent coordination through a small set of tools. An orchestrator agent can spawn workers, group them into teams, and send follow-up messages — all without leaving the standard tool-call interface.
+
+<Note>
+  Agent tasks run as background processes. Use the [Task Management Tools](/reference/tools-task) to monitor progress, read output, and stop tasks once they are running.
+</Note>
+
+---
+
+## Agent
+
+**Tool name:** `agent`
+
+Spawn a background agent task. The new agent runs in a subprocess (or in-process, depending on `mode`) and processes `prompt` independently. The spawning agent receives the task ID immediately and can poll or communicate with the child task using the task tools and `send_message`.
+
+### Parameters
+
+<ParamField path="description" type="string" required>
+  Short human-readable description of the delegated work. Used in task listings and logs.
+</ParamField>
+
+<ParamField path="prompt" type="string" required>
+  Full prompt for the spawned agent. Should be self-contained — the child agent does not inherit the parent's conversation history.
+</ParamField>
+
+<ParamField path="model" type="string">
+  LLM model override for the child agent. Defaults to the model configured in the current session.
+</ParamField>
+
+<ParamField path="command" type="string">
+  Override the spawn command used to launch the subprocess. Only relevant for `local_agent` and `remote_agent` modes.
+</ParamField>
+
+<ParamField path="team" type="string">
+  Name of an existing team to attach this agent to. The team must have been created with `team_create` first.
+</ParamField>
+
+<ParamField path="mode" type="string" default="local_agent">
+  Agent execution mode. Accepted values:
+
+  - `local_agent` — subprocess agent on the local machine
+  - `remote_agent` — agent dispatched to a remote host
+  - `in_process_teammate` — lightweight in-process agent (no subprocess)
+</ParamField>
+
+### Example
+
+<CodeGroup>
+
+```json Spawn a local agent
+{
+  "description": "Write unit tests for the parser module",
+  "prompt": "Write pytest unit tests for src/parser.py. Cover all public functions. Save to tests/test_parser.py.",
+  "mode": "local_agent"
+}
+```
+
+```json Spawn and attach to a team
+{
+  "description": "Review pull request diff",
+  "prompt": "Review the diff in pr.diff and output a structured list of issues.",
+  "team": "review-team",
+  "mode": "local_agent"
+}
+```
+
+</CodeGroup>
+
+### Notes
+
+<Steps>
+  <Step title="Spawn">
+    The tool creates the task and returns its ID immediately (e.g., `Spawned local_agent task abc123`).
+  </Step>
+  <Step title="Monitor">
+    Use `task_get` or `task_list` to check status.
+  </Step>
+  <Step title="Read output">
+    Use `task_output` to stream the child agent's output back to the orchestrator.
+  </Step>
+  <Step title="Communicate">
+    Use `send_message` to send follow-up instructions to a still-running agent.
+  </Step>
+</Steps>
+
+---
+
+## SendMessage
+
+**Tool name:** `send_message`
+
+Send a follow-up message to a running agent task by writing to its stdin. This allows the orchestrator to provide additional context or instructions without stopping and restarting the child agent.
+
+<Warning>
+  The target task must be in a running state. Sending a message to a completed or stopped task returns an error.
+</Warning>
+
+### Parameters
+
+<ParamField path="task_id" type="string" required>
+  The ID of the target local agent task. Returned by `agent` or `task_create` when the task was created.
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  Message text to write to the task's stdin. The child agent receives this as a new user turn.
+</ParamField>
+
+### Example
+
+```json
+{
+  "task_id": "abc123",
+  "message": "Also add docstrings to every public function you create."
+}
+```
+
+---
+
+## TeamCreate
+
+**Tool name:** `team_create`
+
+Create a lightweight in-memory team. Teams are named groups that you can attach agents to. They provide a convenient namespace for organizing related agent tasks.
+
+### Parameters
+
+<ParamField path="name" type="string" required>
+  Unique team name. Attempting to create a team with a name that already exists returns an error.
+</ParamField>
+
+<ParamField path="description" type="string" default="">
+  Optional human-readable description of the team's purpose.
+</ParamField>
+
+### Example
+
+```json
+{
+  "name": "review-team",
+  "description": "Agents responsible for code review tasks"
+}
+```
+
+### Workflow
+
+```
+team_create  →  agent (team="review-team")  →  agent (team="review-team")
+                       ↓                               ↓
+                    task_output                    task_output
+```
+
+Teams are in-memory only and do not persist between sessions. Clean up with `team_delete` when the work is complete.
+
+---
+
+## TeamDelete
+
+**Tool name:** `team_delete`
+
+Delete an in-memory team. This removes the team record from the registry. It does not stop any agent tasks that were attached to the team; use `task_stop` to stop individual tasks first if needed.
+
+### Parameters
+
+<ParamField path="name" type="string" required>
+  Name of the team to delete. Returns an error if the team does not exist.
+</ParamField>
+
+### Example
+
+```json
+{
+  "name": "review-team"
+}
+```
+
+---
+
+## Multi-agent pattern
+
+A typical orchestrator workflow using all four coordination tools:
+
+<Steps>
+  <Step title="Create a team">
+    ```json
+    { "name": "analysis-team", "description": "Data analysis pipeline" }
+    ```
+  </Step>
+  <Step title="Spawn workers">
+    ```json
+    {
+      "description": "Fetch and clean dataset",
+      "prompt": "Download data from s3://bucket/data.csv, clean it, and save to data/clean.csv.",
+      "team": "analysis-team",
+      "mode": "local_agent"
+    }
+    ```
+  </Step>
+  <Step title="Send follow-up if needed">
+    ```json
+    { "task_id": "abc123", "message": "Also drop rows where 'value' is null." }
+    ```
+  </Step>
+  <Step title="Collect results">
+    ```json
+    { "task_id": "abc123", "max_bytes": 20000 }
+    ```
+  </Step>
+  <Step title="Clean up">
+    ```json
+    { "name": "analysis-team" }
+    ```
+  </Step>
+</Steps>

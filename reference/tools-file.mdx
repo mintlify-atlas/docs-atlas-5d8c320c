@@ -1,0 +1,385 @@
+---
+title: "File, Shell & Search Tools"
+description: "Tools for reading, writing, and editing files, running shell commands, and searching the web and codebase."
+---
+
+These tools cover the day-to-day operations of a coding agent: executing shell commands, reading and writing files, performing text searches, and fetching web content.
+
+<Note>
+  All file paths are resolved relative to the session working directory (`context.cwd`) unless an absolute path is provided. `~` is expanded to the user's home directory.
+</Note>
+
+---
+
+## Bash
+
+**Tool name:** `bash`
+
+Run an arbitrary shell command and capture its combined stdout and stderr. Output is capped at 12,000 characters; anything beyond that is truncated with a `...[truncated]...` marker.
+
+<Warning>
+  `bash` is subject to the permission system. In `default` mode the user is prompted before execution. Use `--dangerously-skip-permissions` only in sandboxed environments.
+</Warning>
+
+### Parameters
+
+<ParamField path="command" type="string" required>
+  Shell command to execute. Passed to `/bin/bash -lc`.
+</ParamField>
+
+<ParamField path="cwd" type="string">
+  Working directory override. Defaults to the session working directory. Supports `~` expansion.
+</ParamField>
+
+<ParamField path="timeout_seconds" type="integer" default="120">
+  Maximum seconds to wait before killing the process. Must be between 1 and 600.
+</ParamField>
+
+### Example
+
+```json
+{
+  "command": "git log --oneline -10",
+  "timeout_seconds": 30
+}
+```
+
+---
+
+## Read
+
+**Tool name:** `read_file`
+
+Read a UTF-8 text file from disk, returning lines with their line numbers. Binary files are rejected. Reads at most 2,000 lines per call; use `offset` to page through large files.
+
+### Parameters
+
+<ParamField path="path" type="string" required>
+  Path of the file to read. Relative paths are resolved from the session working directory.
+</ParamField>
+
+<ParamField path="offset" type="integer" default="0">
+  Zero-based starting line. Use this to read later sections of large files.
+</ParamField>
+
+<ParamField path="limit" type="integer" default="200">
+  Number of lines to return. Must be between 1 and 2000.
+</ParamField>
+
+### Example
+
+```json
+{
+  "path": "src/main.py",
+  "offset": 100,
+  "limit": 50
+}
+```
+
+### Output format
+
+Each returned line is prefixed with its 1-based line number:
+
+```
+   101	def parse_args():
+   102	    parser = argparse.ArgumentParser()
+   ...
+```
+
+---
+
+## Write
+
+**Tool name:** `write_file`
+
+Create a new file or overwrite an existing one with the provided content. Parent directories are created automatically by default.
+
+<Warning>
+  This tool replaces the entire file. To make a targeted change to an existing file, use `edit_file` instead.
+</Warning>
+
+### Parameters
+
+<ParamField path="path" type="string" required>
+  Path of the file to write. Relative paths are resolved from the session working directory.
+</ParamField>
+
+<ParamField path="content" type="string" required>
+  Full file contents to write, encoded as UTF-8.
+</ParamField>
+
+<ParamField path="create_directories" type="boolean" default="true">
+  When `true`, any missing parent directories are created before writing.
+</ParamField>
+
+### Example
+
+```json
+{
+  "path": "config/settings.json",
+  "content": "{\n  \"debug\": true\n}\n"
+}
+```
+
+---
+
+## Edit
+
+**Tool name:** `edit_file`
+
+Perform a targeted string replacement in an existing file. The file must already exist. The tool reads the entire file, substitutes the first occurrence of `old_str` with `new_str`, and writes it back.
+
+<Tip>
+  Always include enough surrounding context in `old_str` to make the match unique. If `old_str` appears more than once and you want to replace all occurrences, set `replace_all` to `true`.
+</Tip>
+
+### Parameters
+
+<ParamField path="path" type="string" required>
+  Path of the file to edit.
+</ParamField>
+
+<ParamField path="old_str" type="string" required>
+  The exact text to find in the file. Must match verbatim including whitespace and indentation.
+</ParamField>
+
+<ParamField path="new_str" type="string" required>
+  The replacement text. Use an empty string to delete `old_str`.
+</ParamField>
+
+<ParamField path="replace_all" type="boolean" default="false">
+  When `true`, all occurrences of `old_str` are replaced. When `false`, only the first occurrence is replaced.
+</ParamField>
+
+### Example
+
+```json
+{
+  "path": "src/server.py",
+  "old_str": "PORT = 8000",
+  "new_str": "PORT = 9000"
+}
+```
+
+---
+
+## Glob
+
+**Tool name:** `glob`
+
+List files matching a glob pattern. Matches are returned as paths relative to the search root, sorted alphabetically.
+
+### Parameters
+
+<ParamField path="pattern" type="string" required>
+  Glob pattern relative to the search root. Supports `**` for recursive matching (e.g., `**/*.py`).
+</ParamField>
+
+<ParamField path="root" type="string">
+  Optional search root directory. Defaults to the session working directory.
+</ParamField>
+
+<ParamField path="limit" type="integer" default="200">
+  Maximum number of results to return. Must be between 1 and 5000.
+</ParamField>
+
+### Example
+
+```json
+{
+  "pattern": "src/**/*.py",
+  "limit": 500
+}
+```
+
+### Output format
+
+```
+src/main.py
+src/utils/helpers.py
+src/utils/parser.py
+```
+
+---
+
+## Grep
+
+**Tool name:** `grep`
+
+Search file contents using a regular expression. Returns matching lines in the format `path:line_number:line_content`.
+
+### Parameters
+
+<ParamField path="pattern" type="string" required>
+  Regular expression to search for. Full Python `re` syntax is supported.
+</ParamField>
+
+<ParamField path="root" type="string">
+  Search root directory. Defaults to the session working directory.
+</ParamField>
+
+<ParamField path="file_glob" type="string" default="**/*">
+  Glob pattern to filter which files are searched.
+</ParamField>
+
+<ParamField path="case_sensitive" type="boolean" default="true">
+  When `false`, the search is case-insensitive (`re.IGNORECASE`).
+</ParamField>
+
+<ParamField path="limit" type="integer" default="200">
+  Maximum number of matching lines to return. Must be between 1 and 2000.
+</ParamField>
+
+### Example
+
+```json
+{
+  "pattern": "class \\w+Tool",
+  "file_glob": "**/*.py",
+  "case_sensitive": true
+}
+```
+
+### Output format
+
+```
+src/tools/bash_tool.py:21:class BashTool(BaseTool):
+src/tools/glob_tool.py:20:class GlobTool(BaseTool):
+```
+
+---
+
+## WebFetch
+
+**Tool name:** `web_fetch`
+
+Fetch a single web page over HTTP/HTTPS and return its text content. HTML is stripped to readable text. Redirects are followed automatically. The response is capped at `max_chars` characters.
+
+### Parameters
+
+<ParamField path="url" type="string" required>
+  HTTP or HTTPS URL to fetch.
+</ParamField>
+
+<ParamField path="max_chars" type="integer" default="12000">
+  Maximum number of characters to return. Must be between 500 and 50000.
+</ParamField>
+
+### Example
+
+```json
+{
+  "url": "https://docs.anthropic.com/en/api/getting-started",
+  "max_chars": 8000
+}
+```
+
+### Output format
+
+```
+URL: https://docs.anthropic.com/en/api/getting-started
+Status: 200
+Content-Type: text/html; charset=utf-8
+
+Getting started with the API ...
+```
+
+---
+
+## WebSearch
+
+**Tool name:** `web_search`
+
+Search the web and return compact results with titles, URLs, and snippets. Uses DuckDuckGo HTML by default; you can override the endpoint for private search backends.
+
+### Parameters
+
+<ParamField path="query" type="string" required>
+  Search query string.
+</ParamField>
+
+<ParamField path="max_results" type="integer" default="5">
+  Maximum number of results to return. Must be between 1 and 10.
+</ParamField>
+
+<ParamField path="search_url" type="string">
+  Optional override for the HTML search endpoint. Useful for private search backends or testing. Defaults to `https://html.duckduckgo.com/html/`.
+</ParamField>
+
+### Example
+
+```json
+{
+  "query": "Python asyncio subprocess example",
+  "max_results": 3
+}
+```
+
+### Output format
+
+```
+Search results for: Python asyncio subprocess example
+1. Subprocess management with asyncio
+   URL: https://docs.python.org/3/library/asyncio-subprocess.html
+   Learn how to create and manage subprocesses using asyncio...
+```
+
+---
+
+## NotebookEdit
+
+**Tool name:** `notebook_edit`
+
+Create or edit a cell in a Jupyter notebook (`.ipynb`) file. Does not require `nbformat` — the notebook is read and written as plain JSON. Missing cells are padded automatically up to the target index.
+
+### Parameters
+
+<ParamField path="path" type="string" required>
+  Path to the `.ipynb` file. The file is created if it does not exist and `create_if_missing` is `true`.
+</ParamField>
+
+<ParamField path="cell_index" type="integer" required>
+  Zero-based index of the cell to create or modify. Must be ≥ 0.
+</ParamField>
+
+<ParamField path="new_source" type="string" required>
+  Replacement or appended source for the target cell, depending on `mode`.
+</ParamField>
+
+<ParamField path="cell_type" type="string" default="code">
+  Type of the cell. Accepted values: `code`, `markdown`.
+</ParamField>
+
+<ParamField path="mode" type="string" default="replace">
+  Whether to replace the cell's source entirely (`replace`) or append to the existing source (`append`).
+</ParamField>
+
+<ParamField path="create_if_missing" type="boolean" default="true">
+  When `true`, creates a new notebook file if `path` does not exist.
+</ParamField>
+
+### Example
+
+<CodeGroup>
+
+```json Replace a code cell
+{
+  "path": "analysis.ipynb",
+  "cell_index": 0,
+  "new_source": "import pandas as pd\ndf = pd.read_csv('data.csv')",
+  "cell_type": "code",
+  "mode": "replace"
+}
+```
+
+```json Append to a markdown cell
+{
+  "path": "analysis.ipynb",
+  "cell_index": 1,
+  "new_source": "\n## Summary\nSee the results above.",
+  "cell_type": "markdown",
+  "mode": "append"
+}
+```
+
+</CodeGroup>

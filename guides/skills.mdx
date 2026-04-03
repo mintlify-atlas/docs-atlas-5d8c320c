@@ -1,0 +1,111 @@
+---
+title: "Skills"
+description: "Use on-demand Markdown knowledge files to guide agent behavior."
+---
+
+Skills are Markdown files that the agent loads at runtime when it needs domain-specific guidance. Instead of baking every workflow into the system prompt, OpenHarness keeps skills as separate `.md` files and loads them only when the model requests them via the `Skill` tool.
+
+## How skills work
+
+When the agent encounters a task that matches a skill's description, it calls the `Skill` tool with the skill's name. OpenHarness reads the corresponding Markdown file and injects its contents into the context. The model then follows the workflow defined in that file.
+
+Skills are loaded from three sources, in order of precedence:
+
+1. User skills — `~/.openharness/skills/`
+2. Plugin skills — contributed by installed plugins
+3. Bundled skills — shipped with OpenHarness
+
+## Built-in skills
+
+OpenHarness ships six bundled skills covering the most common development workflows:
+
+| Skill | Description |
+|-------|-------------|
+| `commit` | Create clean, well-structured git commits |
+| `review` | Review code for bugs, security issues, and quality |
+| `debug` | Diagnose and fix bugs systematically |
+| `plan` | Design an implementation plan before coding |
+| `test` | Write and run tests for code |
+| `simplify` | Refactor code to be simpler and more maintainable |
+
+The README also references 40+ additional skills available through the `anthropics/skills` repository, including `pdf` (PDF processing with pypdf) and `xlsx` (Excel operations).
+
+## Using skills in a session
+
+The agent calls the `Skill` tool automatically when it decides a skill is applicable. You can also explicitly ask the agent to use a skill:
+
+```text
+Use the commit skill to stage and commit my changes.
+```
+
+```text
+Apply the debug skill to find why the server is crashing.
+```
+
+You do not need to load skills manually — the agent handles this on demand.
+
+## Custom skills
+
+You can create your own skills by writing a Markdown file with YAML frontmatter and placing it in `~/.openharness/skills/`.
+
+### Skill file format
+
+```markdown
+---
+name: my-skill
+description: Expert guidance for my specific domain
+---
+
+# My Skill
+
+## When to use
+Use when the user asks about [your domain].
+
+## Workflow
+1. Step one
+2. Step two
+3. Step three
+
+## Rules
+- Rule one
+- Rule two
+```
+
+The frontmatter fields control how OpenHarness registers the skill:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | No | Skill identifier. Defaults to the filename stem. |
+| `description` | No | Short description the agent uses to decide when to load it. Falls back to the first paragraph of the file. |
+
+<Steps>
+  <Step title="Create the skills directory">
+    ```bash
+    mkdir -p ~/.openharness/skills
+    ```
+  </Step>
+  <Step title="Write your skill file">
+    Create `~/.openharness/skills/my-skill.md` with the frontmatter and workflow sections shown above.
+  </Step>
+  <Step title="Verify the skill is discovered">
+    Start a session and ask the agent to list available skills, or prompt it to use your new skill by name:
+    ```text
+    Use the my-skill skill to help me with this task.
+    ```
+  </Step>
+</Steps>
+
+## Compatibility with anthropics/skills
+
+OpenHarness is fully compatible with the [anthropics/skills](https://github.com/anthropics/skills) repository. Any `.md` skill file from that collection can be dropped into `~/.openharness/skills/` without modification.
+
+```bash
+# Clone the anthropics/skills repo and copy skills you want
+git clone https://github.com/anthropics/skills /tmp/anthropic-skills
+cp /tmp/anthropic-skills/pdf.md ~/.openharness/skills/
+cp /tmp/anthropic-skills/xlsx.md ~/.openharness/skills/
+```
+
+<Tip>
+Skills contributed via plugins are loaded automatically when the plugin is enabled. You do not need to copy them to your user skills directory.
+</Tip>

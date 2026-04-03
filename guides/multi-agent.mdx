@@ -1,0 +1,102 @@
+---
+title: "Multi-Agent Coordination"
+description: "Spawn subagents, create teams, and manage background tasks."
+---
+
+OpenHarness includes primitives for delegating work to subagents, organizing agents into teams, and tracking long-running tasks in the background. These tools let the primary agent act as an orchestrator while specialized agents handle parallel workstreams.
+
+## Spawning subagents
+
+The `Agent` tool spawns a subagent to handle a discrete subtask. The primary agent provides a prompt; the subagent runs independently and returns its output.
+
+```text
+Spawn a worker to audit the test suite while you inspect the CLI command registry.
+```
+
+The subagent runs as a `local_agent` task under the background task manager. It has access to the same tool set as the primary agent but operates in an isolated context.
+
+### Built-in agent roles
+
+OpenHarness ships three built-in agent roles you can reference when spawning:
+
+| Name | Description |
+|------|-------------|
+| `default` | General-purpose local coding agent |
+| `worker` | Execution-focused agent for applying changes |
+| `explorer` | Read-heavy agent for understanding codebases |
+
+## Team coordination
+
+Teams group agents so the primary agent can broadcast messages to all members at once. Teams are managed through three tools:
+
+| Tool | Description |
+|------|-------------|
+| `TeamCreate` | Register a new named team |
+| `TeamDelete` | Remove a team and its membership list |
+| `SendMessage` | Broadcast a message to all agents in a team |
+
+A team is an in-memory registry entry — a lightweight record with a name, description, and a list of task IDs representing the member agents.
+
+```text
+Create a team called "reviewers", spawn two explorer agents, add them to the team,
+then send them both the pull request diff to review in parallel.
+```
+
+## Task lifecycle
+
+Background tasks are the execution unit for all agent and shell work. The primary agent manages them through six tools:
+
+| Tool | Description |
+|------|-------------|
+| `TaskCreate` | Start a new background shell or agent task |
+| `TaskGet` | Retrieve the current status of one task |
+| `TaskList` | List all tasks, optionally filtered by status |
+| `TaskUpdate` | Update a task's description, progress, or status note |
+| `TaskStop` | Terminate a running task |
+| `TaskOutput` | Read the tail of a task's output log |
+
+Tasks transition through the following statuses: `running` → `completed` / `failed` / `killed`.
+
+## Background task pattern
+
+A common pattern is to start a slow job in the background, continue doing other work, then poll the task when needed:
+
+```text
+Create a background task that runs the slow integration script and report back when it finishes.
+```
+
+The primary agent can call `TaskCreate` to launch the script, do other reasoning or file work, then call `TaskOutput` to read the results once the task completes.
+
+## Multi-agent workflow example
+
+<Steps>
+  <Step title="Define the work breakdown">
+    Ask the primary agent to split the task:
+
+    ```text
+    I need to refactor the auth module and update all its tests.
+    Split this into two parallel workstreams and spawn agents for each.
+    ```
+  </Step>
+  <Step title="Spawn worker agents">
+    The primary agent calls `Agent` twice — once with a prompt focused on the implementation refactor, and once with a prompt focused on the test updates. Each call returns a task ID.
+  </Step>
+  <Step title="Monitor progress">
+    Use `TaskList` to see the running tasks, or `TaskOutput` to read incremental output from a specific task:
+
+    ```text
+    Show me the current output from the test-update agent.
+    ```
+  </Step>
+  <Step title="Collect results">
+    Once both tasks reach `completed` status, the primary agent calls `TaskOutput` on each and synthesizes the results:
+
+    ```text
+    Both agents have finished. Summarize what each one changed and confirm the tests pass.
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+For long-running tasks, use `TaskUpdate` to set a `status_note` on the task record. This lets the primary agent leave a human-readable progress note without needing to parse the raw output log.
+</Tip>

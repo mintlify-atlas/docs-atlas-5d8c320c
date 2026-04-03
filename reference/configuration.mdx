@@ -1,0 +1,301 @@
+---
+title: "Configuration"
+description: "Configure OpenHarness through settings files and environment variables."
+---
+
+OpenHarness resolves configuration from multiple sources. When the same setting appears in more than one place, the highest-priority source wins.
+
+## Settings precedence
+
+From highest to lowest priority:
+
+1. **CLI arguments** — flags passed directly to `oh` at runtime
+2. **Environment variables** — `ANTHROPIC_API_KEY`, `OPENHARNESS_MODEL`, etc.
+3. **Config file** — `~/.openharness/settings.json`
+4. **Defaults** — built-in values defined in the `Settings` model
+
+## Config file location
+
+The default settings file is `~/.openharness/settings.json`. OpenHarness creates the directory automatically if it does not exist.
+
+You can override the config directory with an environment variable:
+
+```bash
+export OPENHARNESS_CONFIG_DIR=/path/to/custom/config
+```
+
+<Note>
+The directory path set by `OPENHARNESS_CONFIG_DIR` is used for all config-relative paths, including `settings.json`, `skills/`, and plugin directories.
+</Note>
+
+## Environment variables
+
+These environment variables are read on startup and override values in `settings.json`:
+
+| Variable | Overrides | Notes |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | `api_key` | Required unless `api_key` is set in the config file |
+| `ANTHROPIC_MODEL` | `model` | Also accepted as `OPENHARNESS_MODEL` |
+| `ANTHROPIC_BASE_URL` | `base_url` | Also accepted as `OPENHARNESS_BASE_URL` |
+| `OPENHARNESS_MAX_TOKENS` | `max_tokens` | Must be a valid integer |
+| `OPENHARNESS_CONFIG_DIR` | Config directory path | Affects where `settings.json` is read from |
+| `OPENHARNESS_DATA_DIR` | Data directory path | Sessions, caches, task output |
+| `OPENHARNESS_LOGS_DIR` | Logs directory path | Log file output |
+
+## Settings reference
+
+### API configuration
+
+<ParamField body="api_key" type="string" default='""'>
+  Anthropic API key. If empty, OpenHarness falls back to the `ANTHROPIC_API_KEY` environment variable. An error is raised at startup if neither is set.
+</ParamField>
+
+<ParamField body="model" type="string" default='"claude-sonnet-4-20250514"'>
+  Model identifier to use for all requests. Can be any Anthropic-compatible model name supported by your endpoint.
+</ParamField>
+
+<ParamField body="max_tokens" type="number" default="16384">
+  Maximum number of tokens the model may generate per response.
+</ParamField>
+
+<ParamField body="base_url" type="string">
+  Custom API base URL. Set this to route requests through a proxy, an alternative provider, or a self-hosted endpoint. When unset, requests go to the standard Anthropic API.
+
+  ```bash
+  # Example: Moonshot / Kimi
+  export ANTHROPIC_BASE_URL=https://api.moonshot.cn/anthropic
+  ```
+</ParamField>
+
+### Behavior
+
+<ParamField body="system_prompt" type="string">
+  Custom system prompt prepended to every session. When set, this replaces the default system prompt assembled by OpenHarness. Use `--append-system-prompt` on the CLI to add to the default instead of replacing it.
+</ParamField>
+
+<ParamField body="permission" type="object">
+  Permission mode and access control rules. See [PermissionSettings](#permissionsettings) below.
+</ParamField>
+
+<ParamField body="hooks" type="object">
+  Hook definitions keyed by event name. See the [Hooks](/reference/hooks) reference for the full hook definition format.
+
+  ```json
+  {
+    "hooks": {
+      "pre_tool_use": [
+        {
+          "type": "command",
+          "command": "echo 'Tool: $ARGUMENTS'",
+          "matcher": "Bash"
+        }
+      ]
+    }
+  }
+  ```
+</ParamField>
+
+<ParamField body="memory" type="object">
+  Memory system configuration. See [MemorySettings](#memorysettings) below.
+</ParamField>
+
+<ParamField body="enabled_plugins" type="object">
+  Map of plugin names to enabled/disabled boolean. Plugins not listed here inherit their default enabled state.
+
+  ```json
+  {
+    "enabled_plugins": {
+      "security-guidance": true,
+      "commit-commands": true
+    }
+  }
+  ```
+</ParamField>
+
+<ParamField body="mcp_servers" type="object">
+  Map of MCP server names to server configuration objects. Each entry defines an external Model Context Protocol server that OpenHarness will connect to and expose as tools.
+</ParamField>
+
+### UI
+
+<ParamField body="theme" type="string" default='"default"'>
+  Terminal UI color theme.
+</ParamField>
+
+<ParamField body="output_style" type="string" default='"default"'>
+  Output formatting style for non-interactive sessions.
+</ParamField>
+
+<ParamField body="vim_mode" type="boolean" default="false">
+  Enable Vim keybindings in the interactive input field.
+</ParamField>
+
+<ParamField body="voice_mode" type="boolean" default="false">
+  Enable voice input mode. Not wired in the current build.
+</ParamField>
+
+<ParamField body="fast_mode" type="boolean" default="false">
+  Skip confirmation dialogs and reduce latency. Equivalent to automatically approving most interactive prompts.
+</ParamField>
+
+<ParamField body="effort" type="string" default='"medium"'>
+  Reasoning effort level. Accepts `"low"`, `"medium"`, or `"high"`.
+</ParamField>
+
+<ParamField body="passes" type="number" default="1">
+  Number of agent passes to run on the task before returning a result.
+</ParamField>
+
+<ParamField body="verbose" type="boolean" default="false">
+  Enable verbose logging output, including internal agent reasoning and tool metadata.
+</ParamField>
+
+---
+
+## PermissionSettings
+
+Controls what the agent is allowed to do and how approval works.
+
+<ParamField body="permission.mode" type="string" default='"default"'>
+  Permission enforcement mode. One of:
+
+  | Value | Behavior |
+  |---|---|
+  | `"default"` | Ask before write and execute operations |
+  | `"plan"` | Block all writes — read-only mode for reviewing plans |
+  | `"full_auto"` | Allow everything without prompting — for sandboxed environments |
+</ParamField>
+
+<ParamField body="permission.allowed_tools" type="string[]" default="[]">
+  List of tool names that are always allowed without an approval prompt, regardless of mode.
+</ParamField>
+
+<ParamField body="permission.denied_tools" type="string[]" default="[]">
+  List of tool names that are always denied. The agent will not be able to invoke these tools.
+</ParamField>
+
+<ParamField body="permission.path_rules" type="object[]" default="[]">
+  Ordered list of glob-pattern path rules. Rules are evaluated in order; the first matching rule wins. See [PathRuleConfig](#pathruleconfig) below.
+</ParamField>
+
+<ParamField body="permission.denied_commands" type="string[]" default="[]">
+  List of shell command patterns that are always blocked. The agent cannot run commands matching any entry in this list.
+
+  ```json
+  {
+    "denied_commands": ["rm -rf /", "DROP TABLE *"]
+  }
+  ```
+</ParamField>
+
+### PathRuleConfig
+
+A single path permission rule applied to file and directory access.
+
+<ParamField body="pattern" type="string" required>
+  A glob pattern matched against the absolute path of the file or directory being accessed. For example, `/etc/*` matches all files directly under `/etc/`.
+</ParamField>
+
+<ParamField body="allow" type="boolean" default="true">
+  Whether to allow (`true`) or deny (`false`) access to paths matching the pattern.
+</ParamField>
+
+---
+
+## MemorySettings
+
+Controls the persistent memory subsystem.
+
+<ParamField body="memory.enabled" type="boolean" default="true">
+  Enable or disable the memory system. When disabled, no `MEMORY.md` files are read or written across sessions.
+</ParamField>
+
+<ParamField body="memory.max_files" type="number" default="5">
+  Maximum number of memory files the agent will load into context per session.
+</ParamField>
+
+<ParamField body="memory.max_entrypoint_lines" type="number" default="200">
+  Maximum number of lines to read from a memory entrypoint file (`CLAUDE.md` or similar). Content beyond this limit is truncated to keep context size manageable.
+</ParamField>
+
+---
+
+## Complete example
+
+A `~/.openharness/settings.json` covering common configuration scenarios:
+
+```json
+{
+  "api_key": "",
+  "model": "claude-sonnet-4-20250514",
+  "max_tokens": 16384,
+  "base_url": null,
+
+  "system_prompt": null,
+
+  "permission": {
+    "mode": "default",
+    "allowed_tools": ["Read", "Glob", "Grep"],
+    "denied_tools": [],
+    "path_rules": [
+      { "pattern": "/etc/*", "allow": false },
+      { "pattern": "/tmp/*", "allow": true }
+    ],
+    "denied_commands": ["rm -rf /", "DROP TABLE *"]
+  },
+
+  "hooks": {
+    "pre_tool_use": [
+      {
+        "type": "command",
+        "command": "echo \"[hook] pre_tool_use: $ARGUMENTS\"",
+        "matcher": "Bash",
+        "timeout_seconds": 10,
+        "block_on_failure": false
+      }
+    ],
+    "post_tool_use": []
+  },
+
+  "memory": {
+    "enabled": true,
+    "max_files": 5,
+    "max_entrypoint_lines": 200
+  },
+
+  "enabled_plugins": {
+    "security-guidance": true,
+    "commit-commands": true
+  },
+
+  "mcp_servers": {},
+
+  "theme": "default",
+  "output_style": "default",
+  "vim_mode": false,
+  "voice_mode": false,
+  "fast_mode": false,
+  "effort": "medium",
+  "passes": 1,
+  "verbose": false
+}
+```
+
+<Tip>
+You do not need to include every field. OpenHarness merges your file with built-in defaults, so you only need to specify the values you want to change.
+</Tip>
+
+## Directory layout
+
+OpenHarness uses several directories under the config base:
+
+| Path | Purpose |
+|---|---|
+| `~/.openharness/settings.json` | Main settings file |
+| `~/.openharness/skills/` | User-defined skill Markdown files |
+| `~/.openharness/data/sessions/` | Session history |
+| `~/.openharness/data/tasks/` | Background task output |
+| `~/.openharness/data/feedback/` | Feedback log |
+| `~/.openharness/logs/` | Runtime logs |
+
+Each path can be independently relocated with its corresponding environment variable (`OPENHARNESS_DATA_DIR`, `OPENHARNESS_LOGS_DIR`).

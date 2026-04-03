@@ -1,0 +1,284 @@
+---
+title: "Task Management Tools"
+description: "Tools for creating, inspecting, updating, and stopping background shell and agent tasks."
+---
+
+The task system lets the agent run work asynchronously in the background. A task can be a plain shell command (`local_bash`) or a full agent subprocess (`local_agent`). The six task tools cover the full lifecycle: create → monitor → update → read output → stop.
+
+<Note>
+  Background tasks are in-memory and do not persist between sessions. All task IDs are generated at creation time and are unique within a session.
+</Note>
+
+---
+
+## TaskCreate
+
+**Tool name:** `task_create`
+
+Create a background task. Two types are supported:
+
+- `local_bash` — runs a shell command in a subprocess
+- `local_agent` — spawns a full OpenHarness agent subprocess
+
+<Tip>
+  For a higher-level way to spawn an agent with team attachment, see the [`agent` tool](/reference/tools-agent).
+</Tip>
+
+### Parameters
+
+<ParamField path="type" type="string" default="local_bash">
+  Task type. Accepted values: `local_bash`, `local_agent`.
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Short human-readable description shown in `task_list` output.
+</ParamField>
+
+<ParamField path="command" type="string">
+  Shell command to run. Required when `type` is `local_bash`.
+</ParamField>
+
+<ParamField path="prompt" type="string">
+  Full prompt for the child agent. Required when `type` is `local_agent`.
+</ParamField>
+
+<ParamField path="model" type="string">
+  LLM model override for `local_agent` tasks. Defaults to the session model.
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+
+```json Shell task
+{
+  "type": "local_bash",
+  "description": "Run the test suite",
+  "command": "uv run pytest -q 2>&1 | tee /tmp/test-results.txt"
+}
+```
+
+```json Agent task
+{
+  "type": "local_agent",
+  "description": "Refactor the utils module",
+  "prompt": "Refactor src/utils.py to remove code duplication. Preserve all public APIs."
+}
+```
+
+</CodeGroup>
+
+### Return value
+
+```
+Created task abc123 (local_bash)
+```
+
+---
+
+## TaskGet
+
+**Tool name:** `task_get`
+
+Retrieve detailed state for a single background task, including its status, type, description, and any metadata set via `task_update`.
+
+### Parameters
+
+<ParamField path="task_id" type="string" required>
+  Task identifier returned by `task_create` or `agent`.
+</ParamField>
+
+### Example
+
+```json
+{
+  "task_id": "abc123"
+}
+```
+
+### Output
+
+The tool returns the string representation of the task object, including fields such as:
+
+- `id` — unique task identifier
+- `type` — `local_bash` or `local_agent`
+- `status` — current state (e.g., `running`, `done`, `failed`, `stopped`)
+- `description` — human-readable description
+- `metadata` — any values set via `task_update`
+
+---
+
+## TaskList
+
+**Tool name:** `task_list`
+
+List all background tasks in the current session, optionally filtered by status. Each line in the output contains the task ID, type, status, and description.
+
+### Parameters
+
+<ParamField path="status" type="string">
+  Optional status filter. When provided, only tasks matching this status are returned. Common values: `running`, `done`, `failed`, `stopped`.
+</ParamField>
+
+### Examples
+
+<CodeGroup>
+
+```json List all tasks
+{}
+```
+
+```json List running tasks only
+{
+  "status": "running"
+}
+```
+
+</CodeGroup>
+
+### Output format
+
+```
+abc123 local_bash running Run the test suite
+def456 local_agent done    Refactor the utils module
+```
+
+---
+
+## TaskUpdate
+
+**Tool name:** `task_update`
+
+Update metadata on a background task for progress tracking and observability. You can update the description, report a progress percentage, or attach a short status note. All fields are optional — only the fields you provide are changed.
+
+### Parameters
+
+<ParamField path="task_id" type="string" required>
+  Task identifier.
+</ParamField>
+
+<ParamField path="description" type="string">
+  Updated human-readable description for the task.
+</ParamField>
+
+<ParamField path="progress" type="integer">
+  Progress percentage. Must be between 0 and 100. Stored in `task.metadata["progress"]`.
+</ParamField>
+
+<ParamField path="status_note" type="string">
+  Short human-readable note about current task state. Stored in `task.metadata["status_note"]`.
+</ParamField>
+
+### Example
+
+```json
+{
+  "task_id": "abc123",
+  "progress": 45,
+  "status_note": "Processed 450 of 1000 records"
+}
+```
+
+### Return value
+
+```
+Updated task abc123 progress=45% note=Processed 450 of 1000 records
+```
+
+---
+
+## TaskStop
+
+**Tool name:** `task_stop`
+
+Stop a running background task. For `local_bash` tasks, the subprocess is terminated. For `local_agent` tasks, the agent subprocess is signalled to stop. The task transitions to `stopped` status.
+
+<Warning>
+  Stopping a task is irreversible within a session. You cannot resume a stopped task; you must create a new one.
+</Warning>
+
+### Parameters
+
+<ParamField path="task_id" type="string" required>
+  Task identifier of the task to stop.
+</ParamField>
+
+### Example
+
+```json
+{
+  "task_id": "abc123"
+}
+```
+
+### Return value
+
+```
+Stopped task abc123
+```
+
+---
+
+## TaskOutput
+
+**Tool name:** `task_output`
+
+Read the accumulated output log for a background task. For `local_bash` tasks this is the combined stdout/stderr. For `local_agent` tasks this is the agent's text output. The response is limited to `max_bytes` bytes from the most recent output.
+
+<Tip>
+  Call `task_output` repeatedly while `task_get` shows status `running` to stream incremental progress back to the orchestrator.
+</Tip>
+
+### Parameters
+
+<ParamField path="task_id" type="string" required>
+  Task identifier.
+</ParamField>
+
+<ParamField path="max_bytes" type="integer" default="12000">
+  Maximum bytes of output to return. Must be between 1 and 100000.
+</ParamField>
+
+### Example
+
+```json
+{
+  "task_id": "abc123",
+  "max_bytes": 20000
+}
+```
+
+---
+
+## Task lifecycle
+
+```
+task_create / agent
+        ↓
+   [running]  ←── task_update (progress, notes)
+        ↓              ↓
+   task_output    task_get (poll status)
+        ↓
+   [done | failed | stopped]
+        ↓
+   task_stop  (if still running)
+```
+
+<Expandable title="Complete polling example">
+
+```python
+# Pseudocode for orchestrator polling pattern
+task_id = task_create(type="local_bash", command="./run_analysis.sh", description="Analysis")
+
+while True:
+    task = task_get(task_id)
+    if task.status in ("done", "failed", "stopped"):
+        break
+    output = task_output(task_id, max_bytes=4000)
+    # process incremental output ...
+    sleep(5)
+
+final_output = task_output(task_id, max_bytes=100000)
+```
+
+</Expandable>

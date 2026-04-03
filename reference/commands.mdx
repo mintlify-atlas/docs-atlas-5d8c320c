@@ -1,0 +1,635 @@
+---
+title: "Slash Commands"
+description: "Commands available inside the interactive OpenHarness REPL session."
+---
+
+## Using the command picker
+
+Inside the REPL, type `/` to open the command picker. Use arrow keys to browse the list, then press **Enter** to select.
+
+<Steps>
+  <Step title="Open the picker">
+    Type `/` in the input box. A list of available commands appears.
+  </Step>
+  <Step title="Browse">
+    Use the **up** and **down** arrow keys to highlight a command.
+  </Step>
+  <Step title="Execute">
+    Press **Enter** to run the highlighted command, or keep typing to filter by name.
+  </Step>
+</Steps>
+
+You can also type a command directly: `/help`, `/clear`, `/compact 4`, etc.
+
+---
+
+## Session
+
+Commands for managing session state and conversation history.
+
+<AccordionGroup>
+  <Accordion title="/exit">
+    Exit OpenHarness.
+
+    ```
+    /exit
+    ```
+  </Accordion>
+  <Accordion title="/resume [SESSION_ID]">
+    Restore a saved session. With no argument, loads the most recent session or opens a picker listing the last 10 sessions. Pass a session ID to restore a specific session.
+
+    ```
+    /resume
+    /resume abc123def
+    ```
+
+    The picker shows each session's ID, timestamp, message count, and summary.
+  </Accordion>
+  <Accordion title="/session [show|ls|path|tag NAME|clear]">
+    Inspect and manage session storage for the current project.
+
+    | Subcommand | Effect |
+    |---|---|
+    | `show` (default) | Show session directory, snapshot presence, and message count |
+    | `ls` | List all files in the session storage directory |
+    | `path` | Print the session storage path |
+    | `tag NAME` | Save a named snapshot of the current session |
+    | `clear` | Delete all session files for this project |
+
+    ```
+    /session
+    /session tag pre-refactor
+    /session clear
+    ```
+  </Accordion>
+  <Accordion title="/tag NAME">
+    Shortcut for `/session tag NAME`. Creates both a JSON snapshot and a Markdown export tagged with the given name.
+
+    ```
+    /tag before-merge
+    ```
+  </Accordion>
+  <Accordion title="/rewind [TURNS]">
+    Remove the most recent conversation turn(s). Defaults to 1 turn.
+
+    ```
+    /rewind
+    /rewind 3
+    ```
+  </Accordion>
+  <Accordion title="/status">
+    Show session status: message count, token usage (input/output), reasoning effort, and pass count.
+
+    ```
+    /status
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Context
+
+Commands for inspecting and compressing the conversation context window.
+
+<AccordionGroup>
+  <Accordion title="/clear">
+    Clear all conversation history and reset the context window.
+
+    ```
+    /clear
+    ```
+  </Accordion>
+  <Accordion title="/compact [PRESERVE_RECENT]">
+    Compress older messages into a summary, keeping the most recent messages intact. Defaults to preserving the last 6 messages.
+
+    ```
+    /compact
+    /compact 10
+    ```
+  </Accordion>
+  <Accordion title="/summary [MAX_MESSAGES]">
+    Summarize the conversation history. Defaults to the last 8 messages.
+
+    ```
+    /summary
+    /summary 20
+    ```
+  </Accordion>
+  <Accordion title="/export">
+    Export the current conversation as a Markdown transcript. Prints the path to the exported file.
+
+    ```
+    /export
+    ```
+  </Accordion>
+  <Accordion title="/share">
+    Create a shareable Markdown transcript snapshot. Similar to `/export` but intended for sharing.
+
+    ```
+    /share
+    ```
+  </Accordion>
+  <Accordion title="/copy [TEXT]">
+    Copy the latest assistant response to the clipboard. Pass optional text to copy that instead. Falls back to saving to a file if the clipboard is unavailable.
+
+    ```
+    /copy
+    /copy Some specific text to copy
+    ```
+  </Accordion>
+  <Accordion title="/context">
+    Print the full active runtime system prompt (assembled from settings, CLAUDE.md, and skills).
+
+    ```
+    /context
+    ```
+  </Accordion>
+  <Accordion title="/usage">
+    Show token usage (actual and estimated) and message count.
+
+    ```
+    /usage
+    ```
+  </Accordion>
+  <Accordion title="/cost">
+    Show token usage and an estimated cost for the current session based on the active model's pricing.
+
+    ```
+    /cost
+    ```
+  </Accordion>
+  <Accordion title="/stats">
+    Show a full session statistics summary: messages, estimated tokens, tool count, memory files, background tasks, and output style.
+
+    ```
+    /stats
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Workflow
+
+Commands for git operations and permission management.
+
+<AccordionGroup>
+  <Accordion title="/commit [MESSAGE]">
+    With no argument, prints `git status --short`. With a message, stages all changes (`git add -A`) and commits.
+
+    ```
+    /commit
+    /commit fix: handle null edge case in parser
+    ```
+  </Accordion>
+  <Accordion title="/diff [full]">
+    Show a `git diff --stat` summary. Pass `full` to see the full diff.
+
+    ```
+    /diff
+    /diff full
+    ```
+  </Accordion>
+  <Accordion title="/branch [show|list]">
+    Show the current branch (`show`, default) or list all branches (`list`).
+
+    ```
+    /branch
+    /branch list
+    ```
+  </Accordion>
+  <Accordion title="/issue [show|set TITLE :: BODY|clear]">
+    Manage a project-level issue context file injected into the system prompt.
+
+    ```
+    /issue
+    /issue set Auth bug :: Login fails when email has a + character
+    /issue clear
+    ```
+  </Accordion>
+  <Accordion title="/pr_comments [show|add FILE[:LINE] :: COMMENT|clear]">
+    Manage PR comment context. Useful when working through review feedback.
+
+    ```
+    /pr_comments
+    /pr_comments add src/auth.py:42 :: Variable name is unclear
+    /pr_comments clear
+    ```
+  </Accordion>
+  <Accordion title="/permissions [show|set MODE]">
+    Show the current permission mode, or change it. Accepted modes: `default`, `plan`, `full_auto`.
+
+    ```
+    /permissions
+    /permissions set plan
+    /permissions set full_auto
+    ```
+  </Accordion>
+  <Accordion title="/plan [on|off]">
+    Shortcut to enter or exit plan mode (read-only, no writes).
+
+    ```
+    /plan on
+    /plan off
+    ```
+  </Accordion>
+  <Accordion title="/tasks [list|run CMD|stop ID|show ID|update ID ...|output ID]">
+    Manage background tasks.
+
+    | Subcommand | Effect |
+    |---|---|
+    | `list` (default) | List all background tasks with ID, type, status, and description |
+    | `run CMD` | Start a new shell task |
+    | `stop ID` | Stop a running task |
+    | `show ID` | Print full details for a task |
+    | `update ID description TEXT` | Update a task's description |
+    | `update ID progress NUMBER` | Set task progress (0–100) |
+    | `update ID note TEXT` | Set a status note |
+    | `output ID` | Read captured stdout/stderr for a task |
+
+    ```
+    /tasks
+    /tasks run pytest -q
+    /tasks output abc123
+    /tasks stop abc123
+    ```
+  </Accordion>
+  <Accordion title="/agents [show ID]">
+    List active and recorded agent/teammate tasks. Pass a task ID to see full details and output.
+
+    ```
+    /agents
+    /agents show abc123
+    ```
+  </Accordion>
+  <Accordion title="/files [dirs|COUNT] [FILTER]">
+    List files in the current workspace, optionally filtered by a name substring.
+
+    ```
+    /files
+    /files auth
+    /files 50 .py
+    /files dirs
+    ```
+  </Accordion>
+  <Accordion title="/init">
+    Initialize project-level OpenHarness files in the current directory: `CLAUDE.md`, `.openharness/memory/MEMORY.md`, `.openharness/plugins/`, and `.openharness/skills/`.
+
+    ```
+    /init
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Knowledge
+
+Commands for managing project memory and skills.
+
+<AccordionGroup>
+  <Accordion title="/memory [list|show NAME|add TITLE :: CONTENT|remove NAME]">
+    Inspect and manage persistent project memory files.
+
+    | Subcommand | Effect |
+    |---|---|
+    | (none) | Show memory directory and entrypoint paths |
+    | `list` | List all memory files |
+    | `show NAME` | Print the contents of a memory file |
+    | `add TITLE :: CONTENT` | Create a new memory entry |
+    | `remove NAME` | Delete a memory entry |
+
+    ```
+    /memory list
+    /memory add Auth rules :: Always validate JWTs server-side
+    /memory show auth-rules
+    /memory remove auth-rules
+    ```
+  </Accordion>
+  <Accordion title="/skills [NAME]">
+    List all available skills (built-in and from plugins). Pass a skill name to print its full content.
+
+    ```
+    /skills
+    /skills commit
+    /skills review
+    ```
+
+    <Tip>
+      Skills are Markdown files loaded on demand. You can add your own to `~/.openharness/skills/` or `.openharness/skills/` in your project.
+    </Tip>
+  </Accordion>
+  <Accordion title="/hooks">
+    Show a summary of all configured lifecycle hooks (PreToolUse / PostToolUse).
+
+    ```
+    /hooks
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Plugins
+
+<AccordionGroup>
+  <Accordion title="/plugin [list|enable NAME|disable NAME|install PATH|uninstall NAME]">
+    Manage plugins from inside the session.
+
+    | Subcommand | Effect |
+    |---|---|
+    | `list` (default) | Show all discovered plugins with enabled/disabled status |
+    | `enable NAME` | Enable a plugin (takes effect on next session start) |
+    | `disable NAME` | Disable a plugin (takes effect on next session start) |
+    | `install PATH` | Install a plugin from a local path |
+    | `uninstall NAME` | Remove a plugin |
+
+    ```
+    /plugin list
+    /plugin enable commit-commands
+    /plugin disable security-guidance
+    /plugin install ./my-plugin
+    ```
+  </Accordion>
+  <Accordion title="/reload-plugins">
+    Reload plugin discovery for the current workspace without restarting.
+
+    ```
+    /reload-plugins
+    ```
+  </Accordion>
+  <Accordion title="/mcp [auth SERVER ...]">
+    Show MCP server status. Use `auth` subcommands to configure authentication for a specific server.
+
+    ```
+    /mcp
+    /mcp auth my-server Bearer sk-...
+    /mcp auth my-server env MY_TOKEN value
+    ```
+
+    Changes are saved to settings. Restart the session to reconnect.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Configuration
+
+Commands for viewing and changing settings at runtime.
+
+<AccordionGroup>
+  <Accordion title="/config [show|set KEY VALUE]">
+    Show the full settings JSON, or update a single key.
+
+    ```
+    /config
+    /config set model claude-opus-4-5
+    /config set effort high
+    ```
+  </Accordion>
+  <Accordion title="/model [show|set MODEL]">
+    Show or update the active model.
+
+    ```
+    /model
+    /model set claude-sonnet-4-5
+    ```
+  </Accordion>
+  <Accordion title="/effort [show|low|medium|high]">
+    Show or set the reasoning effort level.
+
+    ```
+    /effort
+    /effort high
+    ```
+  </Accordion>
+  <Accordion title="/passes [show|COUNT]">
+    Show or set the reasoning pass count (1–8).
+
+    ```
+    /passes
+    /passes 3
+    ```
+  </Accordion>
+  <Accordion title="/fast [show|on|off|toggle]">
+    Toggle fast mode, which produces shorter responses with less tool use — useful for reducing API load.
+
+    ```
+    /fast
+    /fast on
+    /fast toggle
+    ```
+  </Accordion>
+  <Accordion title="/theme [show|set THEME]">
+    Show or change the UI theme.
+
+    ```
+    /theme
+    /theme set dark
+    ```
+  </Accordion>
+  <Accordion title="/output-style [show|list|set NAME]">
+    Show, list, or change the output style.
+
+    ```
+    /output-style
+    /output-style list
+    /output-style set compact
+    ```
+  </Accordion>
+  <Accordion title="/vim [show|on|off|toggle]">
+    Show or toggle Vim keybindings in the input box.
+
+    ```
+    /vim
+    /vim on
+    /vim toggle
+    ```
+  </Accordion>
+  <Accordion title="/voice [show|on|off|toggle|keyterms TEXT]">
+    Show voice mode status, toggle it, or extract keyterms from text for voice recognition tuning.
+
+    ```
+    /voice
+    /voice on
+    /voice keyterms fix the auth bug
+    ```
+  </Accordion>
+  <Accordion title="/keybindings">
+    Print all resolved keybindings and the path to the keybindings file.
+
+    ```
+    /keybindings
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Utilities
+
+<AccordionGroup>
+  <Accordion title="/help">
+    Print a summary of all registered slash commands.
+
+    ```
+    /help
+    ```
+  </Accordion>
+  <Accordion title="/login [API_KEY]">
+    Show authentication status, or store an API key. With no argument, prints the current provider, status, base URL, model, and a masked version of the stored key.
+
+    ```
+    /login
+    /login sk-ant-...
+    ```
+  </Accordion>
+  <Accordion title="/logout">
+    Clear the stored API key from settings.
+
+    ```
+    /logout
+    ```
+  </Accordion>
+  <Accordion title="/version">
+    Print the installed OpenHarness version.
+
+    ```
+    /version
+    ```
+  </Accordion>
+  <Accordion title="/doctor">
+    Print an environment diagnostics summary: working directory, model, permission mode, theme, output style, vim/voice mode, effort, passes, memory directory, plugin count, and MCP status.
+
+    ```
+    /doctor
+    ```
+  </Accordion>
+  <Accordion title="/onboarding">
+    Print the quickstart guide.
+
+    ```
+    /onboarding
+    ```
+  </Accordion>
+  <Accordion title="/feedback TEXT">
+    Append feedback text to the local feedback log. Shows the log path if called with no argument.
+
+    ```
+    /feedback The /compact command should show a token estimate
+    ```
+  </Accordion>
+  <Accordion title="/privacy-settings">
+    Print local storage and privacy settings: config directories, session directory, feedback log path, API base URL, and a summary of what network calls OpenHarness makes.
+
+    ```
+    /privacy-settings
+    ```
+  </Accordion>
+  <Accordion title="/rate-limit-options">
+    Print suggestions for reducing provider rate pressure (lower effort, fewer passes, fast mode, compact, background tasks).
+
+    ```
+    /rate-limit-options
+    ```
+  </Accordion>
+  <Accordion title="/release-notes">
+    Print the contents of `RELEASE_NOTES.md` if it exists in the current directory, otherwise show the built-in release notes.
+
+    ```
+    /release-notes
+    ```
+  </Accordion>
+  <Accordion title="/upgrade">
+    Print upgrade instructions for the current version.
+
+    ```
+    /upgrade
+    ```
+  </Accordion>
+  <Accordion title="/bridge [show|encode|decode|sdk|spawn|list|output|stop]">
+    Inspect the internal bridge layer used to communicate with subagents and the React TUI backend. Intended for advanced users and plugin developers.
+
+    | Subcommand | Effect |
+    |---|---|
+    | `show` (default) | Summary of bridge state |
+    | `encode API_BASE_URL TOKEN` | Encode a work secret |
+    | `decode SECRET` | Decode a work secret |
+    | `sdk API_BASE_URL SESSION_ID` | Build a bridge SDK URL |
+    | `spawn CMD` | Spawn a bridge session running CMD |
+    | `list` | List active bridge sessions |
+    | `output SESSION_ID` | Read output from a bridge session |
+    | `stop SESSION_ID` | Stop a bridge session |
+
+    ```
+    /bridge
+    /bridge list
+    /bridge spawn npx my-agent
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Full command list
+
+55 commands are registered by default. The table below lists every command with its one-line description.
+
+| Command | Description |
+|---|---|
+| `/agents` | List or inspect agent and teammate tasks |
+| `/branch` | Show git branch information |
+| `/bridge` | Inspect bridge helpers and spawn bridge sessions |
+| `/clear` | Clear conversation history |
+| `/commit` | Show status or create a git commit |
+| `/compact` | Compact older conversation history |
+| `/config` | Show or update configuration |
+| `/context` | Show the active runtime system prompt |
+| `/copy` | Copy the latest response or provided text |
+| `/cost` | Show token usage and estimated cost |
+| `/diff` | Show git diff output |
+| `/doctor` | Show environment diagnostics |
+| `/effort` | Show or update reasoning effort |
+| `/exit` | Exit OpenHarness |
+| `/export` | Export the current transcript |
+| `/fast` | Show or update fast mode |
+| `/feedback` | Save CLI feedback to the local feedback log |
+| `/files` | List files in the current workspace |
+| `/help` | Show available commands |
+| `/hooks` | Show configured hooks |
+| `/init` | Initialize project OpenHarness files |
+| `/issue` | Show or update project issue context |
+| `/keybindings` | Show resolved keybindings |
+| `/login` | Show auth status or store an API key |
+| `/logout` | Clear the stored API key |
+| `/mcp` | Show MCP status |
+| `/memory` | Inspect and manage project memory |
+| `/model` | Show or update the default model |
+| `/onboarding` | Show the quickstart guide |
+| `/output-style` | Show or update output style |
+| `/passes` | Show or update reasoning pass count |
+| `/permissions` | Show or update permission mode |
+| `/plan` | Toggle plan permission mode |
+| `/plugin` | Manage plugins |
+| `/pr_comments` | Show or update project PR comments context |
+| `/privacy-settings` | Show local privacy and storage settings |
+| `/rate-limit-options` | Show ways to reduce provider rate pressure |
+| `/release-notes` | Show recent OpenHarness release notes |
+| `/reload-plugins` | Reload plugin discovery for this workspace |
+| `/resume` | Restore the latest saved session |
+| `/rewind` | Remove the latest conversation turn(s) |
+| `/session` | Inspect the current session storage |
+| `/share` | Create a shareable transcript snapshot |
+| `/skills` | List or show available skills |
+| `/stats` | Show session statistics |
+| `/status` | Show session status |
+| `/summary` | Summarize conversation history |
+| `/tag` | Create a named snapshot of the current session |
+| `/tasks` | Manage background tasks |
+| `/theme` | Show or update the theme |
+| `/upgrade` | Show upgrade instructions |
+| `/usage` | Show usage and token estimates |
+| `/version` | Show the installed OpenHarness version |
+| `/vim` | Show or update Vim mode |
+| `/voice` | Show or update voice mode |

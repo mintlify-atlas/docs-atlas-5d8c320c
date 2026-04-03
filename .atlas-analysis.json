@@ -1,0 +1,112 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "OpenHarness",
+  "projectDescription": "A lightweight, open-source Python agent harness providing tool-use, skills, memory, permissions, and multi-agent coordination via the `oh` CLI.",
+  "theme": "luma",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "provider-compatibility"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/agent-harness",
+              "concepts/agent-loop",
+              "concepts/architecture"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/skills",
+              "guides/plugins",
+              "guides/permissions",
+              "guides/multi-agent",
+              "guides/mcp",
+              "guides/memory"
+            ]
+          },
+          {
+            "group": "Extending",
+            "pages": [
+              "extending/custom-tools",
+              "extending/custom-skills",
+              "extending/custom-plugins",
+              "extending/contributing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "reference/cli",
+              "reference/commands"
+            ]
+          },
+          {
+            "group": "Tools",
+            "pages": [
+              "reference/tools-overview",
+              "reference/tools-file",
+              "reference/tools-agent",
+              "reference/tools-task",
+              "reference/tools-mcp"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "reference/configuration",
+              "reference/hooks"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Streaming agent loop with tool-call cycle, retry, and parallel tool execution",
+    "43+ built-in tools covering file I/O, shell, web, search, MCP, and multi-agent coordination",
+    "On-demand skill loading from Markdown files, compatible with anthropics/skills",
+    "Plugin system compatible with claude-code plugins (commands, hooks, agents, MCP servers)",
+    "Multi-level permission modes with path-level rules and PreToolUse/PostToolUse hooks",
+    "Persistent memory via MEMORY.md and session resume across conversations",
+    "Multi-agent coordination with subagent spawning and background task management",
+    "React/Ink terminal UI with interactive command picker and permission dialogs",
+    "Non-interactive print mode with text, JSON, and stream-JSON output formats",
+    "Support for Anthropic, Moonshot/Kimi, Vertex-compatible, and Bedrock-compatible providers"
+  ],
+  "publicApiSurface": [
+    "oh (CLI entry point)",
+    "oh -p/--print <prompt> — non-interactive single-prompt mode",
+    "oh --output-format text|json|stream-json",
+    "oh --permission-mode default|plan|full_auto",
+    "oh mcp list|add|remove",
+    "oh plugin list|install|uninstall",
+    "oh auth status|login|logout",
+    "BaseTool — base class for custom tool implementations",
+    "ToolExecutionContext — context passed to tool execute() methods",
+    "ToolResult — return type for tool execute() methods",
+    "Settings (~/.openharness/settings.json) — multi-layer configuration model",
+    "PermissionMode (default, plan, full_auto)",
+    "HookDefinition — PreToolUse/PostToolUse hook schema",
+    "LoadedPlugin — runtime plugin artifact container",
+    "QueryEngine — core agent loop engine"
+  ]
+}

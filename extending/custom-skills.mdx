@@ -1,0 +1,178 @@
+---
+title: "Custom skills"
+description: "Create Markdown knowledge files that the agent loads on demand."
+---
+
+Skills are Markdown files the agent loads when it needs specialized knowledge. Instead of stuffing every workflow into the system prompt, skills are fetched only when relevant — keeping context lean and guidance sharp.
+
+OpenHarness skills use the same format as the [`anthropics/skills`](https://github.com/anthropics/skills) library, so existing skill files work without modification.
+
+## How skills work
+
+When the agent encounters a task it wants guidance on, it calls the built-in `Skill` tool with the skill name. The harness reads the corresponding `.md` file and injects it into the conversation. The file is plain Markdown — no special runtime, no code to execute.
+
+```
+Agent → calls Skill("docker")
+Harness → reads ~/.openharness/skills/docker.md
+Harness → injects content into context
+Agent → follows the workflow described in the skill
+```
+
+## Skill file format
+
+Every skill file has a YAML frontmatter block followed by free-form Markdown.
+
+```markdown
+---
+name: my-skill
+description: Expert guidance for my specific domain
+---
+
+# My Skill
+
+## When to use
+Use when the user asks about [your domain].
+
+## Workflow
+1. Step one
+2. Step two
+```
+
+The frontmatter fields:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Machine name used to invoke the skill (no spaces) |
+| `description` | Yes | One-sentence description shown when the agent lists available skills |
+
+## Where to place skills
+
+Skills are discovered from two locations:
+
+| Location | Scope | When to use |
+|----------|-------|-------------|
+| `~/.openharness/skills/` | Global — available in all sessions | Personal or reusable skills |
+| `.openharness/skills/` | Project — available in this directory only | Project-specific workflows |
+
+Project-level skills take precedence over global ones when both exist with the same name.
+
+## Creating a skill
+
+<Steps>
+  <Step title="Create the skills directory">
+    For a global skill:
+
+    ```bash
+    mkdir -p ~/.openharness/skills
+    ```
+
+    For a project-scoped skill, run this from your project root:
+
+    ```bash
+    mkdir -p .openharness/skills
+    ```
+  </Step>
+
+  <Step title="Write the skill file">
+    Create a `.md` file named after your skill. The filename becomes the invocation name.
+
+    ```bash
+    # global
+    touch ~/.openharness/skills/docker.md
+
+    # project-scoped
+    touch .openharness/skills/docker.md
+    ```
+  </Step>
+
+  <Step title="Add frontmatter and content">
+    Open the file and fill in the frontmatter and workflow sections. See the complete example below.
+  </Step>
+
+  <Step title="Verify discovery">
+    Start a session and ask the agent to list available skills:
+
+    ```
+    What skills do you have available?
+    ```
+
+    Your new skill should appear in the list.
+  </Step>
+</Steps>
+
+## Complete example: a Docker skill
+
+```markdown
+---
+name: docker
+description: Build, run, and debug Docker containers and Compose stacks
+---
+
+# Docker
+
+Expert guidance for containerization tasks using Docker and Docker Compose.
+
+## When to use
+
+Use this skill when the user asks to:
+- Build or push a Docker image
+- Start, stop, or inspect containers
+- Debug a failing container or Compose service
+- Write or improve a Dockerfile or docker-compose.yml
+- Investigate networking, volume, or permission issues
+
+## Workflow
+
+### Building an image
+
+1. Check for an existing `Dockerfile` in the project root.
+2. Review the base image and ensure it matches the runtime requirements.
+3. Run `docker build -t <name>:<tag> .` and capture the build output.
+4. If the build fails, read the error layer, locate the failing instruction, and fix it.
+5. Test the image: `docker run --rm <name>:<tag> <command>`.
+
+### Debugging a failing container
+
+1. Run `docker ps -a` to find the container ID.
+2. Read logs: `docker logs <container-id> --tail 100`.
+3. If the container exits immediately, add `--entrypoint sh` to inspect the filesystem.
+4. Check environment variables with `docker inspect <container-id>`.
+
+### Compose stacks
+
+1. Validate the compose file: `docker compose config`.
+2. Bring up services: `docker compose up -d`.
+3. Watch logs across all services: `docker compose logs -f`.
+4. Tear down cleanly: `docker compose down --volumes`.
+
+## Common pitfalls
+
+- **Layer caching**: Place `COPY` instructions for dependency files (`package.json`,
+  `requirements.txt`) before application source to cache installs.
+- **Non-root users**: Add `USER` instruction to avoid running as root in production.
+- **`.dockerignore`**: Always create one to prevent leaking secrets and bloating the build context.
+
+## References
+
+- `docker build --help`
+- `docker compose --help`
+- `docker inspect <id>` for full container metadata
+```
+
+## Tips for effective skills
+
+<Tip>
+  Be specific in the "When to use" section. The agent reads this to decide whether to load the skill. Vague criteria lead to the skill being invoked too broadly or not at all.
+</Tip>
+
+<Tip>
+  Structure workflow steps as numbered lists. The agent follows sequential instructions more reliably than prose paragraphs.
+</Tip>
+
+<Note>
+  Skills are read-only context injections — they cannot execute code or call tools themselves. Put executable logic in a [custom tool](/extending/custom-tools) and reference it from a skill's workflow.
+</Note>
+
+<Note>
+  OpenHarness is compatible with the `anthropics/skills` library format. You can copy any `.md` file from that repository directly into `~/.openharness/skills/` and it will work without modification.
+</Note>

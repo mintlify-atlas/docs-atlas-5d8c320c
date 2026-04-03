@@ -1,0 +1,68 @@
+---
+title: "Introduction"
+description: "OpenHarness is a lightweight, open-source Python agent harness — the infrastructure that wraps around an LLM to make it a functional coding agent."
+---
+
+OpenHarness delivers core agent infrastructure through a single CLI command: `oh`. It provides tool-use, skills, memory, permissions, and multi-agent coordination — everything an LLM needs to act, not just respond.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Install OpenHarness and run your first agent session in under 5 minutes
+  </Card>
+  <Card title="Core Concepts" icon="lightbulb" href="/concepts/agent-harness">
+    Understand what an agent harness is and how OpenHarness is structured
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/reference/cli">
+    Explore every flag and subcommand the `oh` CLI provides
+  </Card>
+  <Card title="Extending" icon="puzzle-piece" href="/extending/custom-tools">
+    Build custom tools, skills, and plugins on top of the harness
+  </Card>
+</CardGroup>
+
+## What is OpenHarness?
+
+An **agent harness** is the complete infrastructure that wraps around an LLM to make it a functional agent. The model provides intelligence; the harness provides hands, eyes, memory, and safety boundaries.
+
+OpenHarness is a Python implementation of this pattern, designed to be:
+
+- **Lightweight** — 11,733 lines vs 512,664 in comparable tools (44x lighter)
+- **Readable** — 163 files with clear, inspectable architecture
+- **Compatible** — works with `anthropics/skills` and `claude-code` plugins
+- **Extensible** — add tools, skills, and plugins with minimal boilerplate
+
+## Key capabilities
+
+<CardGroup cols={2}>
+  <Card title="43+ Tools" icon="wrench">
+    File I/O, shell, web search, MCP, and multi-agent coordination tools — all with Pydantic validation and permission integration
+  </Card>
+  <Card title="Skills System" icon="book">
+    On-demand Markdown knowledge loading, compatible with the `anthropics/skills` library
+  </Card>
+  <Card title="Plugin Ecosystem" icon="plug">
+    Commands, hooks, and agents — compatible with `claude-code` plugin format
+  </Card>
+  <Card title="Permission Governance" icon="shield">
+    Multi-level modes, path rules, and PreToolUse/PostToolUse lifecycle hooks
+  </Card>
+  <Card title="Multi-Agent" icon="users">
+    Subagent spawning, team coordination, and background task management
+  </Card>
+  <Card title="Provider Flexible" icon="cloud">
+    Anthropic, Moonshot/Kimi, Vertex, Bedrock, and any Anthropic-compatible endpoint
+  </Card>
+</CardGroup>
+
+## Who is it for?
+
+OpenHarness is built for **researchers, builders, and contributors** who want to:
+
+- Understand how production AI agents work under the hood
+- Experiment with tools, skills, and coordination patterns
+- Extend the harness with custom plugins and domain knowledge
+- Build specialized agents on top of proven architecture
+
+<Note>
+OpenHarness is an open-source community project. Contributions in tools, skills, plugins, providers, and documentation are all welcome — see the [Contributing guide](/extending/contributing).
+</Note>

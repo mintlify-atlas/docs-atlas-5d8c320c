@@ -1,0 +1,125 @@
+---
+title: "Memory & Sessions"
+description: "Persist knowledge across sessions and resume previous conversations."
+---
+
+OpenHarness provides two complementary memory mechanisms: **session history** for resuming conversations and **persistent memory files** for carrying facts across separate sessions.
+
+## MEMORY.md — persistent cross-session memory
+
+Each project has a `MEMORY.md` file stored in a project-specific data directory. The agent can read and update this file to record facts, decisions, and context that should survive across sessions.
+
+The memory directory is keyed to the working directory path:
+
+```
+~/.local/share/openharness/memory/<project-name>-<hash>/
+├── MEMORY.md           # Index of all memory entries
+├── decision-log.md     # Individual memory files
+└── architecture.md
+```
+
+`MEMORY.md` acts as an index, linking to individual memory files by title. The agent uses it to quickly scan what has been recorded without loading every file.
+
+## CLAUDE.md — automatic context injection
+
+If a `CLAUDE.md` file exists in the current working directory or any parent directory, OpenHarness reads it and injects its contents into the system prompt at session start. This is the standard way to provide project-specific instructions that apply to every session.
+
+```
+project/
+├── CLAUDE.md           # Injected automatically
+└── src/
+```
+
+`CLAUDE.md` discovery walks up the directory tree, so a single file at the repository root applies to all subdirectories.
+
+## Memory settings
+
+Configure memory behavior in `~/.openharness/settings.json`:
+
+```json
+{
+  "memory": {
+    "enabled": true,
+    "max_files": 5,
+    "max_entrypoint_lines": 200
+  }
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `true` | Whether memory loading is active |
+| `max_files` | `5` | Maximum number of memory files injected per session |
+| `max_entrypoint_lines` | `200` | Maximum lines read from `MEMORY.md` |
+
+## Session management
+
+OpenHarness records every session so you can resume it later. Each session is stored per project and identified by an ID.
+
+### Session flags
+
+```bash
+oh -c                  # Continue the most recent session
+oh --continue          # Same as -c
+
+oh -r <id>             # Resume a specific session by ID
+oh --resume <id>       # Same as -r
+
+oh -n "my session"     # Start a new session with a label
+oh --name "my session" # Same as -n
+```
+
+### Resuming from the TUI
+
+Type `/resume` inside an active session to open the session picker. Arrow keys navigate the list; Enter resumes the selected session.
+
+## Context compression
+
+When the context window grows large, OpenHarness automatically compresses older messages into a summary (auto-compact). This keeps the session running without hitting token limits, at the cost of losing fine-grained detail from earlier in the conversation.
+
+<Note>
+Auto-compact is triggered by the engine when the estimated token count approaches the model's context limit. The current conversation state is summarized and the session continues from the compressed point.
+</Note>
+
+## Session resume workflow
+
+<Steps>
+  <Step title="Start a named session">
+    Label your session so it is easy to identify later:
+
+    ```bash
+    oh --name "auth-refactor"
+    ```
+  </Step>
+  <Step title="Work across multiple sittings">
+    End the session normally (Ctrl+C or `/exit`). Your conversation history is automatically saved.
+  </Step>
+  <Step title="Resume the session">
+    Continue from where you left off:
+
+    ```bash
+    oh -c                     # most recent session
+    oh -r <session-id>        # specific session by ID
+    ```
+
+    Or use the TUI picker:
+
+    ```bash
+    oh
+    # then type /resume inside the session
+    ```
+  </Step>
+  <Step title="Review memory">
+    Ask the agent what it remembers about the project:
+
+    ```text
+    What do you know about this project from previous sessions?
+    ```
+
+    The agent will read `MEMORY.md` and summarize stored facts.
+  </Step>
+</Steps>
+
+<Tip>
+Use `CLAUDE.md` for stable project facts (architecture decisions, coding conventions, team rules) and `MEMORY.md` for dynamic state that changes as you work (in-progress tasks, recent findings, open questions).
+</Tip>

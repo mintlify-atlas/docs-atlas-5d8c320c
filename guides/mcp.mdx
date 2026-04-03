@@ -1,0 +1,124 @@
+---
+title: "MCP Integration"
+description: "Connect external tools and resources using the Model Context Protocol."
+---
+
+The Model Context Protocol (MCP) is an open standard for connecting language models to external tools, data sources, and services. OpenHarness acts as an MCP client: it connects to one or more MCP servers at startup, discovers their tools and resources, and makes them available to the agent during a session.
+
+## How OpenHarness uses MCP
+
+MCP servers expose tools and resources over a transport (currently `stdio`; `http` and `ws` configs are accepted but not yet connected in the current build). At session start, OpenHarness:
+
+1. Reads `mcp_servers` from `~/.openharness/settings.json`
+2. Merges in any MCP servers contributed by enabled plugins
+3. Connects to each configured `stdio` server and calls `list_tools` and `list_resources`
+4. Registers all discovered tools so the agent can call them via `MCPTool`
+
+## Agent-facing MCP tools
+
+The agent accesses MCP functionality through three built-in tools:
+
+| Tool | Description |
+|------|-------------|
+| `MCPTool` | Call a tool exposed by a connected MCP server |
+| `ListMcpResources` | List all resources available across connected servers |
+| `ReadMcpResource` | Read the contents of a specific MCP resource by URI |
+
+## Managing MCP servers
+
+```bash
+# List configured servers and their connection status
+oh mcp list
+
+# Add a server (config-json is a JSON object string)
+oh mcp add <name> <config-json>
+
+# Remove a server
+oh mcp remove <name>
+```
+
+Server configurations are stored under `mcp_servers` in `~/.openharness/settings.json`.
+
+## Server configuration format
+
+MCP server configs are stored as named entries in `settings.json`:
+
+```json
+{
+  "mcp_servers": {
+    "my-server": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@my-org/my-mcp-server"],
+      "env": {
+        "API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+### Stdio server fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `type` | Yes | Must be `"stdio"` |
+| `command` | Yes | The executable to run |
+| `args` | No | List of command-line arguments |
+| `env` | No | Environment variables passed to the server process |
+| `cwd` | No | Working directory for the server process |
+
+## Adding a server via the CLI
+
+Pass the JSON config as a string argument to `oh mcp add`:
+
+```bash
+oh mcp add filesystem '{
+  "type": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
+}'
+```
+
+This appends the server to `~/.openharness/settings.json` under `mcp_servers.filesystem`.
+
+## Loading configs from a file
+
+Use `--mcp-config` to load MCP server definitions from a JSON file or inline string at session start without modifying your persistent settings:
+
+```bash
+oh --mcp-config ./my-mcp-servers.json
+```
+
+The file must follow the same `{ "mcpServers": { ... } }` shape used by Claude Desktop and compatible tools.
+
+<CodeGroup>
+
+```json my-mcp-servers.json
+{
+  "mcpServers": {
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_..."
+      }
+    }
+  }
+}
+```
+
+```bash launch with config file
+oh --mcp-config ./my-mcp-servers.json
+```
+
+</CodeGroup>
+
+## Plugin-contributed MCP servers
+
+Plugins can bundle MCP server configurations in a `.mcp.json` file at the plugin root. When the plugin is enabled, its servers are merged into the session automatically — no manual configuration needed.
+
+<Note>
+If a plugin and `settings.json` define a server with the same name, the settings.json entry takes precedence. Plugin server names are prefixed with `<plugin-name>:` to avoid collisions (e.g., `my-plugin:my-server`).
+</Note>

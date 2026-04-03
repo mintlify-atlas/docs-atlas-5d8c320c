@@ -1,0 +1,134 @@
+---
+title: "Agent Loop"
+description: "How the streaming tool-call cycle works inside OpenHarness."
+---
+
+The agent loop is the heart of every OpenHarness session. It is a single `while` loop that streams a model response, detects tool calls, executes them through the harness, and feeds results back — repeating until the model decides it is done.
+
+## The loop in pseudocode
+
+```python
+while True:
+    response = await api.stream(messages, tools)
+
+    if response.stop_reason != "tool_use":
+        break  # Model is done
+
+    for tool_call in response.tool_uses:
+        # Permission check → Hook → Execute → Hook → Result
+        result = await harness.execute_tool(tool_call)
+
+    messages.append(tool_results)
+    # Loop continues — model sees results, decides next action
+```
+
+The model decides **what** to do. The harness handles **how** — safely, efficiently, with full observability.
+
+## Loop phases
+
+<Steps>
+  <Step title="Stream the model response">
+    OpenHarness calls the Anthropic-compatible API with the current message history and the full tool registry schema. The response streams back incrementally. Each text delta is emitted as an `AssistantTextDelta` event so the UI can display output in real time.
+
+    If the model's `stop_reason` is not `tool_use`, the loop exits and the turn is complete.
+  </Step>
+
+  <Step title="Detect tool calls">
+    When `stop_reason == "tool_use"`, the completed message contains one or more `tool_use` blocks. Each block names a tool and carries a JSON input payload. The engine extracts these and decides whether to execute them sequentially (single tool) or concurrently (multiple tools).
+
+    A `ToolExecutionStarted` event is emitted for each tool call before execution begins.
+  </Step>
+
+  <Step title="Permission check">
+    Before any tool runs, the `PermissionChecker` evaluates the call against the active permission mode, path rules, and command deny-list.
+
+    - **Default mode**: read-only operations pass automatically; write or execute operations require interactive confirmation.
+    - **Auto mode**: all operations are allowed (use in sandboxed environments).
+    - **Plan mode**: all write operations are blocked.
+
+    If the permission check requires user confirmation, the harness calls the registered `permission_prompt` callback, which surfaces an interactive dialog in the TUI or blocks in CLI mode. A denied call returns an error result immediately without touching the tool.
+  </Step>
+
+  <Step title="PreToolUse hook">
+    If a `HookExecutor` is registered, the harness fires all `PreToolUse` hooks with the tool name and input. Hooks can block the call entirely by returning a blocked result. This is where plugins can inject security warnings, logging, or custom validation.
+
+    If a hook blocks the call, execution stops and the block reason is returned as an error result — the tool itself never runs.
+  </Step>
+
+  <Step title="Execute the tool">
+    The tool is looked up in the `ToolRegistry` by name. Its `input_model` (a Pydantic model) validates the JSON input. If validation fails, an error result is returned without invoking the tool.
+
+    On success, the tool's `execute` method runs with a `ToolExecutionContext` that carries the working directory and any metadata the tool needs (registry reference, `ask_user_prompt` callback, plugin-provided keys).
+  </Step>
+
+  <Step title="PostToolUse hook">
+    After execution, `PostToolUse` hooks fire with the tool name, input, output, and error status. Hooks here are informational — they cannot block or modify the result, but they can log, alert, or trigger side effects.
+  </Step>
+
+  <Step title="Inject results and loop">
+    All tool results are appended to the message history as a `user` role message. The loop then returns to step 1: the model receives its results and decides whether to call more tools or produce a final response.
+
+    A `ToolExecutionCompleted` event is emitted for each finished call. The loop is bounded by `max_turns` (default: 8) to prevent runaway agents.
+  </Step>
+</Steps>
+
+## Stream events
+
+Every phase emits typed events that the UI and CLI consume:
+
+| Event | When emitted |
+|-------|-------------|
+| `AssistantTextDelta` | Each chunk of streamed text from the model |
+| `AssistantTurnComplete` | Model response fully received, with usage stats |
+| `ToolExecutionStarted` | Immediately before a tool runs |
+| `ToolExecutionCompleted` | After a tool finishes, with output and error flag |
+
+These events are the observability surface of the harness. Anything that needs to react to agent activity — the React TUI, the JSON output formatter, cost tracking — consumes this stream.
+
+## Parallel tool execution
+
+When the model requests multiple tools in a single turn, OpenHarness uses `asyncio.gather` to execute them concurrently:
+
+```python
+# Single tool: sequential (stream events immediately)
+if len(tool_calls) == 1:
+    result = await _execute_tool_call(context, tc.name, tc.id, tc.input)
+
+# Multiple tools: execute concurrently, emit events after
+else:
+    results = await asyncio.gather(*[_run(tc) for tc in tool_calls])
+```
+
+`ToolExecutionStarted` events for all concurrent calls are emitted before any of them run. `ToolExecutionCompleted` events follow once all results are in.
+
+## Retry and resilience
+
+API calls are wrapped with exponential backoff retry logic. Transient rate-limit errors and network failures are retried automatically before surfacing as hard errors.
+
+## Token counting and cost tracking
+
+Each `AssistantTurnComplete` event carries a `UsageSnapshot` with input and output token counts. The `CostTracker` accumulates these across all turns in a session. The totals are accessible via `QueryEngine.total_usage` and are displayed in the TUI status bar.
+
+<Note>
+The loop is bounded by `max_turns` (configurable, default 8). If the model has not produced a non-tool response within that many turns, the engine raises a `RuntimeError`. This prevents runaway agents from making unbounded API calls.
+</Note>
+
+## The execution pipeline in full
+
+```
+Permission check
+      ↓
+PreToolUse hook  →  [blocked?]  →  error result
+      ↓
+Tool lookup  →  [unknown?]  →  error result
+      ↓
+Input validation  →  [invalid?]  →  error result
+      ↓
+tool.execute()
+      ↓
+PostToolUse hook
+      ↓
+ToolResultBlock → appended to messages
+```
+
+Every path through the pipeline produces a `ToolResultBlock`. The model always receives a result — success or failure — and can decide how to proceed.

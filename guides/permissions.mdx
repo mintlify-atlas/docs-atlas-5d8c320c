@@ -1,0 +1,128 @@
+---
+title: "Permissions"
+description: "Control what the agent is allowed to do with multi-level permission modes."
+---
+
+OpenHarness enforces a permission layer between the model's decisions and actual tool execution. Every tool call passes through the permission checker before it runs, allowing you to control exactly what the agent can do.
+
+## Permission modes
+
+| Mode | Behavior | Use case |
+|------|----------|----------|
+| `default` | Read-only tools run freely. Mutating tools (writes, shell commands) require interactive confirmation. | Daily development |
+| `plan` | All mutating tools are blocked. The agent can read and reason, but cannot modify files or run commands. | Reviewing a large refactor before applying it |
+| `full_auto` | All tools are allowed without confirmation. | Sandboxed CI environments |
+
+<Note>
+Read-only tools — such as `Read`, `Glob`, `Grep`, and `WebFetch` — are always allowed regardless of the mode in effect.
+</Note>
+
+## Setting the mode
+
+### CLI flag
+
+Pass `--permission-mode` when launching a session:
+
+```bash
+oh --permission-mode default     # interactive confirmations (default)
+oh --permission-mode plan        # read-only, no writes
+oh --permission-mode full_auto   # allow everything
+```
+
+### settings.json
+
+Set a persistent default in `~/.openharness/settings.json`:
+
+```json
+{
+  "permission": {
+    "mode": "default"
+  }
+}
+```
+
+## Path rules
+
+Restrict or explicitly allow file operations by path pattern using glob rules. Rules are evaluated in order; the first match wins.
+
+```json
+{
+  "permission": {
+    "mode": "default",
+    "path_rules": [
+      { "pattern": "/etc/*", "allow": false },
+      { "pattern": "/home/user/projects/*", "allow": true }
+    ]
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pattern` | string | Glob pattern matched against the absolute file path |
+| `allow` | boolean | `true` to allow, `false` to deny |
+
+## Command deny list
+
+Block specific shell commands regardless of the current mode:
+
+```json
+{
+  "permission": {
+    "denied_commands": ["rm -rf /", "DROP TABLE *"]
+  }
+}
+```
+
+Patterns support glob wildcards. A denied command is blocked even in `full_auto` mode.
+
+## Tool allow and deny lists
+
+Control which tools the agent may use at all:
+
+```json
+{
+  "permission": {
+    "allowed_tools": ["Read", "Glob", "Grep"],
+    "denied_tools": ["Bash"]
+  }
+}
+```
+
+You can also pass these as CLI flags:
+
+```bash
+oh --allowed-tools Read,Glob,Grep
+oh --disallowed-tools Bash
+```
+
+An `allowed_tools` entry bypasses the mode check entirely — the tool runs without confirmation. A `denied_tools` entry blocks the tool regardless of any other setting.
+
+## Interactive approval
+
+In `default` mode, the TUI displays a confirmation dialog whenever the agent wants to run a mutating tool:
+
+```
+Allow the agent to run this tool?
+
+  Tool: Write
+  Path: src/main.py
+
+  [y] Allow   [n] Deny   [a] Allow all
+```
+
+- **y** — allow this single invocation
+- **n** — deny; the agent receives an error and may try an alternative
+- **a** — allow all remaining tool calls in this session (equivalent to `full_auto` for the rest of the session)
+
+## Skipping permissions entirely
+
+<Warning>
+`--dangerously-skip-permissions` bypasses all permission checks, including path rules and the command deny list. Only use this flag in a disposable sandbox where unintended writes or deletions carry no risk.
+</Warning>
+
+```bash
+oh --dangerously-skip-permissions -p "Refactor the entire codebase"
+```
+
+This flag is intended for automated pipelines running inside containers or ephemeral VMs where the environment is discarded after the run.
